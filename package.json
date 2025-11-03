@@ -1,0 +1,16 @@
+{
+  "name": "next-edit-suggestions-proposal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Monaco-backed prototype for VS Code next edit suggestion API proposal",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.51.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}
