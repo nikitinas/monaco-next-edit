@@ -7,6 +7,7 @@ const outDir = join(rootDir, 'site/out');
 const publicDir = join(rootDir, 'public');
 const distDir = join(rootDir, 'dist');
 const monacoEsmDir = join(rootDir, 'node_modules/monaco-editor/esm');
+const monacoMinDir = join(rootDir, 'node_modules/monaco-editor/min');
 const docsDir = join(rootDir, 'docs');
 
 async function ensureDirectoryExists(path, label) {
@@ -46,6 +47,7 @@ async function buildSite() {
   await safeCopy(publicDir, outDir, 'public assets');
   await safeCopy(distDir, join(outDir, 'dist'), 'compiled TypeScript output');
   await safeCopy(monacoEsmDir, join(outDir, 'monaco-editor/esm'), 'Monaco ESM bundle');
+  await safeCopy(monacoMinDir, join(outDir, 'monaco-editor/min'), 'Monaco AMD bundle');
 
   if (await pathExists(docsDir)) {
     await safeCopy(docsDir, join(outDir, 'docs'), 'docs');

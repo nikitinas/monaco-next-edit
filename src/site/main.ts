@@ -1,13 +1,16 @@
-import * as monaco from 'monaco-editor';
-import 'monaco-editor/esm/vs/language/typescript/monaco.contribution';
+type MonacoNamespace = typeof import('monaco-editor');
 
 import {
   type Disposable,
   type NextEditSuggestionSession,
   type NextEditSuggestionSessionChangeEvent,
   NextEditTriggerKind,
-} from '../api';
-import { registerPredictiveEditingDemo } from '../demo/mockExtension';
+} from '../api/index.js';
+import { registerPredictiveEditingDemo } from '../demo/mockExtension.js';
+import { loadMonaco } from '../monaco/monacoLoader.js';
+import type { editor as MonacoEditor } from 'monaco-editor';
+
+type Monaco = Awaited<ReturnType<typeof loadMonaco>>;
 
 const SAMPLE_SNIPPETS = [
   `export interface TodoItem {
@@ -94,7 +97,7 @@ function renderSuggestionFeed(
 
   if (!suggestions.length) {
     listElement.innerHTML = '';
-    statusElement.textContent = 'No suggestions yet ? invoke the demo provider to generate predictive edits.';
+    statusElement.textContent = 'Click "Generate Next Edit Suggestions" to populate the feed.';
     docElement.innerHTML =
       '<p class="suggestion-doc-empty">Documentation for the active suggestion will appear here.</p>';
     return;
@@ -130,7 +133,7 @@ function renderSuggestionFeed(
   }
 }
 
-function defineTheme(): void {
+function defineTheme(monaco: Monaco): void {
   if (themeRegistered) {
     return;
   }
@@ -159,6 +162,7 @@ function defineTheme(): void {
 }
 
 export async function startDemoSite(): Promise<void> {
+  const monaco = await loadMonaco();
   const editorContainer = document.getElementById('editor');
   const suggestionListElement = document.getElementById('suggestion-list');
   const suggestionStatusElement = document.getElementById('suggestion-status');
@@ -179,7 +183,7 @@ export async function startDemoSite(): Promise<void> {
   const suggestionStatus = suggestionStatusElement as HTMLElement;
   const suggestionDoc = suggestionDocElement as HTMLElement;
 
-  defineTheme();
+  defineTheme(monaco);
 
   const editor = monaco.editor.create(editorContainer, {
     value: SAMPLE_SNIPPETS[0],
@@ -192,6 +196,10 @@ export async function startDemoSite(): Promise<void> {
     scrollbar: { verticalScrollbarSize: 12, horizontalScrollbarSize: 12 },
     renderWhitespace: 'selection',
   });
+
+  if (typeof window !== 'undefined') {
+    (window as typeof window & { __demoEditor?: MonacoEditor.IStandaloneCodeEditor }).__demoEditor = editor;
+  }
 
   let sampleIndex = 0;
   let sessionSubscription: Disposable | undefined;
@@ -266,6 +274,9 @@ export async function startDemoSite(): Promise<void> {
     sessionSubscription?.dispose();
     registration.dispose();
     editor.dispose();
+    if (typeof window !== 'undefined') {
+      delete (window as typeof window & { __demoEditor?: MonacoEditor.IStandaloneCodeEditor }).__demoEditor;
+    }
   });
 
   renderSuggestionFeed(undefined, undefined, suggestionList, suggestionStatus, suggestionDoc);
@@ -274,6 +285,7 @@ export async function startDemoSite(): Promise<void> {
 declare global {
   interface Window {
     startDemoSite?: () => Promise<void>;
+    __demoEditor?: MonacoEditor.IStandaloneCodeEditor;
   }
 }
 

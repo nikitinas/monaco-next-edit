@@ -1,1 +1,1 @@
-export * from './monacoNextEditSuggestionService';
+export * from './monacoNextEditSuggestionService.js';

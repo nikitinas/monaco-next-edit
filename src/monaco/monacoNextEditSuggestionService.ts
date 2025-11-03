@@ -1,4 +1,6 @@
-import * as monaco from 'monaco-editor';
+import type { editor as MonacoEditor, Range as MonacoRange, Selection as MonacoSelection } from 'monaco-editor';
+
+type Monaco = typeof import('monaco-editor');
 
 import {
   CancellationToken,
@@ -18,7 +20,7 @@ import {
   Position,
   Selection,
   TextDocument,
-} from '../api';
+} from '../api/index.js';
 
 type ProviderResult<T> = T | undefined | null | Promise<T | undefined | null>;
 
@@ -93,7 +95,7 @@ class CancellationTokenSource implements Disposable {
 }
 
 class MonacoTextDocument implements TextDocument {
-  constructor(private readonly model: monaco.editor.ITextModel) {}
+  constructor(private readonly monaco: Monaco, private readonly model: MonacoEditor.ITextModel) {}
 
   get uri(): string {
     return this.model.uri.toString();
@@ -111,11 +113,11 @@ class MonacoTextDocument implements TextDocument {
     if (!range) {
       return this.model.getValue();
     }
-    return this.model.getValueInRange(toMonacoRange(range));
+    return this.model.getValueInRange(toMonacoRange(this.monaco, range));
   }
 }
 
-function toMonacoRange(range: { start: Position; end: Position }): monaco.Range {
+function toMonacoRange(monaco: Monaco, range: { start: Position; end: Position }): MonacoRange {
   return new monaco.Range(
     range.start.line + 1,
     range.start.character + 1,
@@ -124,7 +126,7 @@ function toMonacoRange(range: { start: Position; end: Position }): monaco.Range 
   );
 }
 
-function fromMonacoSelection(selection: monaco.Selection | null | undefined): Selection {
+function fromMonacoSelection(monaco: Monaco, selection: MonacoSelection | null | undefined): Selection {
   const sel = selection ?? new monaco.Selection(1, 1, 1, 1);
   return {
     start: {
@@ -164,11 +166,12 @@ function documentMatchesSelector(document: TextDocument, selector: DocumentSelec
 }
 
 function applyMonacoEdits(
-  editor: monaco.editor.IStandaloneCodeEditor,
+  monaco: Monaco,
+  editor: MonacoEditor.IStandaloneCodeEditor,
   edits: readonly NextEditTextEdit[]
 ): void {
-  const operations = edits.map<monaco.editor.IIdentifiedSingleEditOperation>((edit) => ({
-    range: toMonacoRange(edit.range),
+  const operations = edits.map<MonacoEditor.IIdentifiedSingleEditOperation>((edit) => ({
+    range: toMonacoRange(monaco, edit.range),
     text: edit.insertText,
     forceMoveMarkers: true,
   }));
@@ -178,13 +181,14 @@ function applyMonacoEdits(
 }
 
 function previewDecorationsFromSuggestion(
+  monaco: Monaco,
   suggestion: NextEditSuggestion
-): monaco.editor.IModelDeltaDecoration[] {
-  const decorations: monaco.editor.IModelDeltaDecoration[] = [];
+): MonacoEditor.IModelDeltaDecoration[] {
+  const decorations: MonacoEditor.IModelDeltaDecoration[] = [];
   const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
 
   for (const edit of suggestion.edits) {
-    const range = toMonacoRange(edit.range);
+    const range = toMonacoRange(monaco, edit.range);
     if (!range.isEmpty()) {
       decorations.push({
         range,
@@ -230,7 +234,7 @@ function previewDecorationsFromSuggestion(
   if (suggestion.preview?.emphasisRanges) {
     for (const emphasis of suggestion.preview.emphasisRanges) {
       decorations.push({
-        range: toMonacoRange(emphasis),
+        range: toMonacoRange(monaco, emphasis),
         options: {
           inlineClassName: 'next-edit-emphasis-range',
         },
@@ -251,7 +255,8 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
   readonly onDidChange: Event<NextEditSuggestionSessionChangeEvent> = this.changeEmitter.event;
 
   constructor(
-    private readonly editor: monaco.editor.IStandaloneCodeEditor,
+    private readonly editor: MonacoEditor.IStandaloneCodeEditor,
+    private readonly monaco: Monaco,
     suggestions: readonly NextEditSuggestion[],
     private readonly onAccept: (suggestion: NextEditSuggestion) => Promise<boolean>,
     private readonly onDiscard: () => void,
@@ -282,8 +287,8 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
     if (!primaryEdit) {
       return;
     }
-    const range = toMonacoRange(primaryEdit.range);
-    this.editor.revealRangeInCenter(range, monaco.editor.ScrollType.Smooth);
+    const range = toMonacoRange(this.monaco, primaryEdit.range);
+    this.editor.revealRangeInCenter(range, this.monaco.editor.ScrollType.Smooth);
   }
 
   async accept(suggestion?: NextEditSuggestion): Promise<boolean> {
@@ -356,7 +361,7 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
       this.decorationIds = this.editor.deltaDecorations(this.decorationIds, []);
       return;
     }
-    const decorations = previewDecorationsFromSuggestion(suggestion);
+    const decorations = previewDecorationsFromSuggestion(this.monaco, suggestion);
     this.decorationIds = this.editor.deltaDecorations(this.decorationIds, decorations);
     const active = this.activeSuggestion;
     if (active) {
@@ -379,7 +384,7 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
   private pendingRequest: CancellationTokenSource | undefined;
   private lastAcceptedSuggestionId: string | undefined;
 
-  constructor(private readonly editor: monaco.editor.IStandaloneCodeEditor) {}
+  constructor(private readonly editor: MonacoEditor.IStandaloneCodeEditor, private readonly monaco: Monaco) {}
 
   registerProvider(
     selector: DocumentSelector,
@@ -403,7 +408,7 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
     if (!model) {
       return undefined;
     }
-    const document = new MonacoTextDocument(model);
+    const document = new MonacoTextDocument(this.monaco, model);
     const provider = this.pickProvider(document);
     if (!provider) {
       return undefined;
@@ -418,7 +423,7 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
       this.activeSession = undefined;
     }
 
-    const selection = fromMonacoSelection(this.editor.getSelection());
+    const selection = fromMonacoSelection(this.monaco, this.editor.getSelection());
     const context: NextEditSuggestionContext = {
       triggerKind,
       lastAcceptedSuggestionId: this.lastAcceptedSuggestionId,
@@ -450,9 +455,10 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
 
     const session = new MonacoNextEditSuggestionSession(
       this.editor,
+      this.monaco,
       result.suggestions,
       async (suggestion) => {
-        applyMonacoEdits(this.editor, suggestion.edits);
+        applyMonacoEdits(this.monaco, this.editor, suggestion.edits);
         this.lastAcceptedSuggestionId = suggestion.id;
         return true;
       },

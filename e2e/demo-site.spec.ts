@@ -63,15 +63,34 @@ test.describe('Demo Website', () => {
 
     // Wait for page to load and Monaco to initialize
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
+    await page.waitForFunction(() => {
+      const editor = (window as typeof window & { __demoEditor?: { getValue(): string } }).__demoEditor;
+      return !!editor && editor.getValue().length > 0;
+    });
+
+    const initialValue = await page.evaluate(() => {
+      const editor = (window as typeof window & { __demoEditor?: { getValue(): string } }).__demoEditor;
+      return editor?.getValue() ?? '';
+    });
 
     // Click the populate button
     const populateButton = page.locator('#populate-editor');
     await expect(populateButton).toBeEnabled();
     await populateButton.click();
 
-    // Wait for the editor to update - Monaco will update its content asynchronously
-    await page.waitForTimeout(1000);
+    // Wait for Monaco model value to change after clicking the button
+    await page.waitForFunction((previous) => {
+      const editor = (window as typeof window & { __demoEditor?: { getValue(): string } }).__demoEditor;
+      return !!editor && editor.getValue() !== previous;
+    }, initialValue);
+
+    const updatedValue = await page.evaluate(() => {
+      const editor = (window as typeof window & { __demoEditor?: { getValue(): string } }).__demoEditor;
+      return editor?.getValue() ?? '';
+    });
+
+    expect(updatedValue).not.toEqual(initialValue);
+    expect(updatedValue).toContain('fetchJson');
 
     // Verify button is still functional and editor container is visible
     await expect(populateButton).toBeEnabled();
