@@ -192,7 +192,7 @@ function previewDecorationsFromSuggestion(
 ): MonacoEditor.IModelDeltaDecoration[] {
   const decorations: MonacoEditor.IModelDeltaDecoration[] = [];
   const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
-  
+
   console.log('[PreviewDecorations] Creating decorations for suggestion:', suggestion.label, 'with', suggestion.edits.length, 'edits');
   console.log('[PreviewDecorations] Ghost class name:', ghostClassName);
 
