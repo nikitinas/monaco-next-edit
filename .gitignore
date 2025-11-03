@@ -7,3 +7,8 @@ yarn-error.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
