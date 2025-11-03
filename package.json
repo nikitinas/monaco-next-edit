@@ -5,7 +5,8 @@
   "description": "Monaco-backed prototype for VS Code next edit suggestion API proposal",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "tsc --noEmit -p tsconfig.json"
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "build:site": "npm run build && node scripts/build-site.mjs"
   },
   "dependencies": {
     "monaco-editor": "^0.51.0"

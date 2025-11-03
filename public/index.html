@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Next Edit Suggestions Playground</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="importmap">
+      {
+        "imports": {
+          "monaco-editor": "/monaco-editor/esm/vs/editor/editor.api.js",
+          "monaco-editor/": "/monaco-editor/esm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container">
+        <h1>Next Edit Suggestions</h1>
+        <p>Test drive predictive editing on a lightweight Monaco playground.</p>
+        <div class="header-actions">
+          <a class="button" href="./docs/next-edit-suggestions-proposal.md" target="_blank" rel="noreferrer">
+            View Proposal
+          </a>
+        </div>
+      </div>
+    </header>
+    <main class="container">
+      <section class="demo-intro">
+        <h2>How it works</h2>
+        <p>
+          Load a sample function or paste your own snippet, then ask the demo provider to predict your
+          next edits. Suggestions are rendered inline and summarized in the feed on the right.
+        </p>
+      </section>
+      <section class="demo-shell">
+        <div class="demo-controls" role="group" aria-label="Demo controls">
+          <button id="populate-editor" type="button">Generate Sample Code</button>
+          <button id="invoke-suggestions" type="button">Generate Next Edit Suggestions</button>
+        </div>
+        <div class="demo-body">
+          <div id="editor" class="editor-container" role="presentation" aria-label="Code editor"></div>
+          <aside class="suggestion-panel" aria-live="polite">
+            <h2>Suggestion Feed</h2>
+            <p id="suggestion-status" class="suggestion-status">
+              Click "Generate Next Edit Suggestions" to populate the feed.
+            </p>
+            <ol id="suggestion-list" class="suggestion-list"></ol>
+            <div id="suggestion-documentation" class="suggestion-doc"></div>
+          </aside>
+        </div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <div class="container">
+        <p>
+          Built with <span aria-hidden="true">&#x2665;</span> using the proposed
+          <code>vscode.nextEdits</code> API and Monaco playground scaffolding.
+        </p>
+      </div>
+    </footer>
+    <script type="module">
+      import { startDemoSite } from './dist/site/main.js';
+
+      startDemoSite();
+    </script>
+  </body>
+</html>
