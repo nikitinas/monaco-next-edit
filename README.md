@@ -16,6 +16,14 @@ npm run build
 
 The `build` command emits type declarations and JavaScript into `dist/` so the prototype can be embedded in a playground or an integration test harness.
 
+## Static Demo Site
+
+```bash
+npm run build:site
+```
+
+The command compiles the TypeScript sources and assembles a static site in `site/out`. The site can be served locally or deployed to Vercel using the included `vercel.json` configuration. It features a Monaco editor playground with controls to load sample code and trigger the predictive suggestion provider.
+
 ## Using the Demo Service
 ```ts
 import * as monaco from 'monaco-editor';
