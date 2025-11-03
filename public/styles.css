@@ -85,6 +85,103 @@ main {
   padding: 3rem 0 4rem;
 }
 
+.proposal-main {
+  padding: 4rem 0 5rem;
+}
+
+.markdown-body {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  padding: clamp(1.75rem, 5vw, 3.25rem);
+  color: rgba(226, 232, 240, 0.95);
+  display: block;
+}
+
+.markdown-body > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+  margin-top: 2.5rem;
+  margin-bottom: 1rem;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body h2 {
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+}
+
+.markdown-body h3 {
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+}
+
+.markdown-body p {
+  margin: 1rem 0;
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.markdown-body ul {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.markdown-body li::marker {
+  color: var(--accent);
+}
+
+.markdown-body code {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+}
+
+.markdown-body pre {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 18px;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  overflow-x: auto;
+  margin: 1.5rem 0;
+  font-size: 0.92rem;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  display: block;
+}
+
+.markdown-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(56, 189, 248, 0.6);
+}
+
+.proposal-loading,
+.proposal-error {
+  margin: 2rem 0;
+  text-align: center;
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.proposal-error {
+  color: #fda4af;
+}
+
 .demo-intro h2 {
   margin-top: 0;
   font-size: 1.5rem;
