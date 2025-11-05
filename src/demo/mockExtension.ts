@@ -1,4 +1,4 @@
-import * as monaco from 'monaco-editor';
+import type { editor as MonacoEditor } from 'monaco-editor';
 
 import {
   CancellationToken,
@@ -14,8 +14,9 @@ import {
   Range,
   Selection,
   TextDocument,
-} from '../api';
-import { MonacoNextEditSuggestionService } from '../monaco';
+} from '../api/index.js';
+import { MonacoNextEditSuggestionService } from '../monaco/index.js';
+import { getMonaco } from '../monaco/monacoLoader.js';
 
 /**
  * Demonstrates how a VS Code extension could use the proposed API surface.
@@ -29,10 +30,9 @@ export interface DemoRegistration {
   dispose(): void;
 }
 
-export function registerPredictiveEditingDemo(
-  editor: monaco.editor.IStandaloneCodeEditor
-): DemoRegistration {
-  const service = new MonacoNextEditSuggestionService(editor);
+export function registerPredictiveEditingDemo(editor: MonacoEditor.IStandaloneCodeEditor): DemoRegistration {
+  const monaco = getMonaco();
+  const service = new MonacoNextEditSuggestionService(editor, monaco);
   const provider = new PredictiveNextEditProvider();
   const registration = service.registerProvider({ language: editor.getModel()?.getLanguageId() ?? '*' }, provider);
 
@@ -115,6 +115,7 @@ class PredictiveNextEditProvider implements NextEditSuggestionProvider {
     context: NextEditSuggestionContext,
     token: CancellationToken
   ): Promise<NextEditSuggestionList | undefined> {
+    console.log('[Provider] provideNextEditSuggestions called', { document: document.languageId, selection, context });
     const lines = document.getText().split(/\r?\n/);
     const currentLineIndex = Math.min(selection.active.line, lines.length - 1);
     const currentLine = lines[currentLineIndex] ?? '';
@@ -122,6 +123,7 @@ class PredictiveNextEditProvider implements NextEditSuggestionProvider {
     const selectedText = document.getText({ start: selection.start, end: selection.end });
 
     if (token.isCancellationRequested) {
+      console.log('[Provider] Cancellation requested');
       return undefined;
     }
 
@@ -139,6 +141,7 @@ class PredictiveNextEditProvider implements NextEditSuggestionProvider {
       }
     }
 
+    console.log('[Provider] Returning', suggestions.length, 'suggestions:', suggestions.map(s => s.label));
     return { suggestions };
   }
 

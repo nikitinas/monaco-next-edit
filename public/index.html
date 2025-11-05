@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Next Edit Suggestions Playground</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./monaco-editor/min/vs/editor/editor.main.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <script type="importmap">
-      {
-        "imports": {
-          "monaco-editor": "/monaco-editor/esm/vs/editor/editor.api.js",
-          "monaco-editor/": "/monaco-editor/esm/"
-        }
-      }
+    <script src="./monaco-editor/min/vs/loader.js"></script>
+    <script>
+      window.MonacoEnvironment = {
+        baseUrl: './monaco-editor/min/',
+      };
+      require.config({ paths: { vs: './monaco-editor/min/vs' } });
     </script>
   </head>
   <body>
@@ -26,7 +26,14 @@
         <h1>Next Edit Suggestions</h1>
         <p>Test drive predictive editing on a lightweight Monaco playground.</p>
         <div class="header-actions">
-          <a class="button" href="./proposal.html">View Proposal</a>
+          <a
+            class="button"
+            href="./docs/next-edit-suggestions-proposal.md"
+            target="_blank"
+            rel="noreferrer"
+          >
+            View Proposal
+          </a>
         </div>
       </div>
     </header>

@@ -7,6 +7,9 @@
     "build": "tsc -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
     "build:site": "npm run build && node scripts/build-site.mjs",
+    "dev": "npm run build:site && concurrently \"npm run dev:watch\" \"npm run dev:server\"",
+    "dev:watch": "chokidar \"src/**/*.ts\" \"public/**/*\" \"scripts/**/*.mjs\" --ignore \"**/node_modules/**\" -c \"npm run build:site\"",
+    "dev:server": "live-server site/out --port=3000 --open=/ --wait=1000",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
@@ -17,7 +20,10 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^9.2.1",
     "http-server": "^14.1.1",
+    "live-server": "^1.2.2",
     "playwright": "^1.56.1",
     "typescript": "^5.6.3"
   }

@@ -1,13 +1,16 @@
-import * as monaco from 'monaco-editor';
-import 'monaco-editor/esm/vs/language/typescript/monaco.contribution';
+type MonacoNamespace = typeof import('monaco-editor');
 
 import {
   type Disposable,
   type NextEditSuggestionSession,
   type NextEditSuggestionSessionChangeEvent,
   NextEditTriggerKind,
-} from '../api';
-import { registerPredictiveEditingDemo } from '../demo/mockExtension';
+} from '../api/index.js';
+import { registerPredictiveEditingDemo } from '../demo/mockExtension.js';
+import { loadMonaco } from '../monaco/monacoLoader.js';
+import type { editor as MonacoEditor } from 'monaco-editor';
+
+type Monaco = Awaited<ReturnType<typeof loadMonaco>>;
 
 const SAMPLE_SNIPPETS = [
   `export interface TodoItem {
@@ -92,9 +95,16 @@ function renderSuggestionFeed(
   const suggestions = event?.allSuggestions ?? session?.suggestions ?? [];
   const active = event?.activeSuggestion ?? session?.activeSuggestion;
 
+  console.log('renderSuggestionFeed called with:', {
+    hasSession: !!session,
+    hasEvent: !!event,
+    suggestionsCount: suggestions.length,
+    suggestions: suggestions.map(s => s.label)
+  });
+
   if (!suggestions.length) {
     listElement.innerHTML = '';
-    statusElement.textContent = 'No suggestions yet ? invoke the demo provider to generate predictive edits.';
+    statusElement.textContent = 'Click "Generate Next Edit Suggestions" to populate the feed.';
     docElement.innerHTML =
       '<p class="suggestion-doc-empty">Documentation for the active suggestion will appear here.</p>';
     return;
@@ -120,7 +130,60 @@ function renderSuggestionFeed(
     })
     .join('');
 
+  console.log('Rendering markup:', markup);
+  console.log('List element before innerHTML:', {
+    element: listElement,
+    id: listElement.id,
+    className: listElement.className,
+    isConnected: listElement.isConnected,
+    parentElement: listElement.parentElement?.tagName,
+    currentInnerHTML: listElement.innerHTML.substring(0, 100)
+  });
   listElement.innerHTML = markup;
+  const computedStyle = window.getComputedStyle(listElement);
+  const firstChild = listElement.firstElementChild as HTMLElement | null;
+  const firstChildStyle = firstChild ? window.getComputedStyle(firstChild) : null;
+  const secondChild = listElement.children[1] as HTMLElement | null;
+  const secondChildStyle = secondChild ? window.getComputedStyle(secondChild) : null;
+  
+  console.log('List element after innerHTML:', {
+    innerHTMLLength: listElement.innerHTML.length,
+    children: listElement.children.length,
+    firstChild: listElement.firstElementChild?.tagName,
+    firstChildText: listElement.firstElementChild?.textContent?.substring(0, 50),
+    listElementVisible: listElement.offsetParent !== null,
+    listElementDisplay: computedStyle.display,
+    listElementVisibility: computedStyle.visibility,
+    listElementOpacity: computedStyle.opacity,
+    listElementHeight: computedStyle.height,
+    listElementWidth: computedStyle.width,
+    listElementColor: computedStyle.color,
+    listElementBackgroundColor: computedStyle.backgroundColor,
+    firstChildVisible: firstChild ? firstChild.offsetParent !== null : null,
+    firstChildDisplay: firstChildStyle?.display,
+    firstChildVisibility: firstChildStyle?.visibility,
+    firstChildOpacity: firstChildStyle?.opacity,
+    firstChildHeight: firstChildStyle?.height,
+    firstChildWidth: firstChildStyle?.width,
+    firstChildBackgroundColor: firstChildStyle?.backgroundColor,
+    firstChildColor: firstChildStyle?.color,
+    secondChildVisible: secondChild ? secondChild.offsetParent !== null : null,
+    secondChildDisplay: secondChildStyle?.display,
+    secondChildHeight: secondChildStyle?.height,
+    secondChildBackgroundColor: secondChildStyle?.backgroundColor
+  });
+  
+  // Force a reflow to ensure rendering
+  void listElement.offsetHeight;
+  
+  // Also log the actual DOM structure
+  console.log('DOM structure:', {
+    listElementHTML: listElement.outerHTML.substring(0, 200),
+    firstChildHTML: firstChild?.outerHTML.substring(0, 150),
+    parentElement: listElement.parentElement?.tagName,
+    parentDisplay: listElement.parentElement ? window.getComputedStyle(listElement.parentElement).display : null,
+    parentVisibility: listElement.parentElement ? window.getComputedStyle(listElement.parentElement).visibility : null
+  });
 
   if (active?.documentation?.value) {
     docElement.innerHTML = formatMarkdown(active.documentation.value);
@@ -130,7 +193,7 @@ function renderSuggestionFeed(
   }
 }
 
-function defineTheme(): void {
+function defineTheme(monaco: Monaco): void {
   if (themeRegistered) {
     return;
   }
@@ -159,6 +222,7 @@ function defineTheme(): void {
 }
 
 export async function startDemoSite(): Promise<void> {
+  const monaco = await loadMonaco();
   const editorContainer = document.getElementById('editor');
   const suggestionListElement = document.getElementById('suggestion-list');
   const suggestionStatusElement = document.getElementById('suggestion-status');
@@ -179,7 +243,7 @@ export async function startDemoSite(): Promise<void> {
   const suggestionStatus = suggestionStatusElement as HTMLElement;
   const suggestionDoc = suggestionDocElement as HTMLElement;
 
-  defineTheme();
+  defineTheme(monaco);
 
   const editor = monaco.editor.create(editorContainer, {
     value: SAMPLE_SNIPPETS[0],
@@ -192,6 +256,10 @@ export async function startDemoSite(): Promise<void> {
     scrollbar: { verticalScrollbarSize: 12, horizontalScrollbarSize: 12 },
     renderWhitespace: 'selection',
   });
+
+  if (typeof window !== 'undefined') {
+    (window as typeof window & { __demoEditor?: MonacoEditor.IStandaloneCodeEditor }).__demoEditor = editor;
+  }
 
   let sampleIndex = 0;
   let sessionSubscription: Disposable | undefined;
@@ -208,8 +276,21 @@ export async function startDemoSite(): Promise<void> {
       return;
     }
 
+    console.log('attachSession called with session:', {
+      suggestionsCount: session.suggestions.length,
+      activeIndex: session.activeIndex,
+      activeSuggestion: session.activeSuggestion?.label
+    });
+
+    // Render immediately with the session's current state
     renderSuggestionFeed(session, { activeSuggestion: session.activeSuggestion, allSuggestions: session.suggestions }, suggestionList, suggestionStatus, suggestionDoc);
+    
+    // Subscribe to changes for when suggestions are resolved (e.g., documentation is added)
     sessionSubscription = session.onDidChange((event) => {
+      console.log('Session change event fired:', {
+        suggestionsCount: event.allSuggestions.length,
+        activeSuggestion: event.activeSuggestion?.label
+      });
       renderSuggestionFeed(session, event, suggestionList, suggestionStatus, suggestionDoc);
     });
   }
@@ -247,13 +328,16 @@ export async function startDemoSite(): Promise<void> {
     suggestionStatus.textContent = 'Generating suggestions...';
     try {
       const session = await service.invoke(NextEditTriggerKind.Invoke);
+      console.log('Invoke result:', session ? `Session with ${session.suggestions.length} suggestions` : 'No session');
       if (!session) {
         suggestionStatus.textContent = 'No suggestions available for the current selection.';
         attachSession(undefined);
         return;
       }
+      console.log('Attaching session with suggestions:', session.suggestions.map(s => s.label));
       attachSession(session);
-      suggestionStatus.textContent = 'Suggestions updated.';
+      // Note: renderSuggestionFeed in attachSession already sets the status text
+      // to show the count of suggestions, so we don't need to overwrite it here.
     } catch (error) {
       console.error('Failed to invoke suggestions', error);
       suggestionStatus.textContent = 'Something went wrong while generating suggestions.';
@@ -266,6 +350,9 @@ export async function startDemoSite(): Promise<void> {
     sessionSubscription?.dispose();
     registration.dispose();
     editor.dispose();
+    if (typeof window !== 'undefined') {
+      delete (window as typeof window & { __demoEditor?: MonacoEditor.IStandaloneCodeEditor }).__demoEditor;
+    }
   });
 
   renderSuggestionFeed(undefined, undefined, suggestionList, suggestionStatus, suggestionDoc);
@@ -274,6 +361,7 @@ export async function startDemoSite(): Promise<void> {
 declare global {
   interface Window {
     startDemoSite?: () => Promise<void>;
+    __demoEditor?: MonacoEditor.IStandaloneCodeEditor;
   }
 }
 

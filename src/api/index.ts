@@ -1,1 +1,1 @@
-export * from './nextEditTypes';
+export * from './nextEditTypes.js';
