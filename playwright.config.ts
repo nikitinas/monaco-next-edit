@@ -24,9 +24,11 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'npm run build:site && npx http-server site/out -p 3000 -c-1',
+    command: 'npm run build:site && npx http-server site/out -p 3000 -c-1 --cors',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
 });

@@ -153,15 +153,21 @@ function documentMatchesSelector(document: TextDocument, selector: DocumentSelec
     return selector.some((candidate) => documentMatchesSelector(document, candidate));
   }
   if (typeof selector === 'string') {
-    return selector === '*' || selector === document.languageId;
+    const matches = selector === '*' || selector === document.languageId;
+    console.log('[DocumentMatch] String selector:', { selector, documentLanguage: document.languageId, matches });
+    return matches;
   }
   const filter = selector as DocumentFilter;
   if (filter.language && filter.language !== document.languageId) {
+    console.log('[DocumentMatch] Filter mismatch:', { filterLanguage: filter.language, documentLanguage: document.languageId });
     return false;
   }
   if (filter.scheme) {
-    return document.uri.startsWith(`${filter.scheme}://`);
+    const matches = document.uri.startsWith(`${filter.scheme}://`);
+    console.log('[DocumentMatch] Scheme check:', { scheme: filter.scheme, uri: document.uri, matches });
+    return matches;
   }
+  console.log('[DocumentMatch] Filter matches:', { filter, documentLanguage: document.languageId });
   return true;
 }
 
@@ -186,6 +192,9 @@ function previewDecorationsFromSuggestion(
 ): MonacoEditor.IModelDeltaDecoration[] {
   const decorations: MonacoEditor.IModelDeltaDecoration[] = [];
   const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
+  
+  console.log('[PreviewDecorations] Creating decorations for suggestion:', suggestion.label, 'with', suggestion.edits.length, 'edits');
+  console.log('[PreviewDecorations] Ghost class name:', ghostClassName);
 
   for (const edit of suggestion.edits) {
     const range = toMonacoRange(monaco, edit.range);
@@ -358,11 +367,20 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
   private render(): void {
     const suggestion = this.activeSuggestion;
     if (!suggestion) {
+      console.log('[Session Render] No active suggestion, clearing decorations');
       this.decorationIds = this.editor.deltaDecorations(this.decorationIds, []);
       return;
     }
+    console.log('[Session Render] Rendering suggestion:', suggestion.label);
     const decorations = previewDecorationsFromSuggestion(this.monaco, suggestion);
+    console.log('[Session Render] Created', decorations.length, 'decorations:', decorations.map(d => ({
+      range: d.range.toString(),
+      hasAfter: !!d.options.after,
+      afterContent: d.options.after?.content?.substring(0, 50),
+      inlineClassName: d.options.inlineClassName
+    })));
     this.decorationIds = this.editor.deltaDecorations(this.decorationIds, decorations);
+    console.log('[Session Render] Applied decorations, decoration IDs:', this.decorationIds);
     const active = this.activeSuggestion;
     if (active) {
       this.changeEmitter.fire({
@@ -406,13 +424,21 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
   async invoke(triggerKind: NextEditTriggerKind = NextEditTriggerKind.Invoke): Promise<NextEditSuggestionSession | undefined> {
     const model = this.editor.getModel();
     if (!model) {
+      console.log('[Invoke] No model found');
       return undefined;
     }
     const document = new MonacoTextDocument(this.monaco, model);
+    console.log('[Invoke] Document:', { uri: document.uri, languageId: document.languageId, version: document.version });
+    console.log('[Invoke] Registered providers:', this.providers.length);
+    this.providers.forEach((p, i) => {
+      console.log(`[Invoke] Provider ${i}:`, { selector: p.selector, id: p.provider.id });
+    });
     const provider = this.pickProvider(document);
     if (!provider) {
+      console.log('[Invoke] No provider found for document');
       return undefined;
     }
+    console.log('[Invoke] Using provider:', provider.provider.id);
 
     this.cancelPendingRequest();
     const requestCts = new CancellationTokenSource();
@@ -429,15 +455,20 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
       lastAcceptedSuggestionId: this.lastAcceptedSuggestionId,
     };
 
+    console.log('[Invoke] Calling provideNextEditSuggestions with:', { selection, context });
     const result = await asPromise(provider.provider.provideNextEditSuggestions(document, selection, context, requestCts.token));
+    console.log('[Invoke] Provider returned:', result ? { suggestionsCount: result.suggestions.length, suggestions: result.suggestions.map(s => s.label) } : 'undefined');
 
     if (requestCts !== this.pendingRequest || requestCts.token.isCancellationRequested) {
+      console.log('[Invoke] Request was cancelled');
       return undefined;
     }
 
     if (!result || !result.suggestions.length) {
+      console.log('[Invoke] No suggestions returned');
       return undefined;
     }
+    console.log('[Invoke] Creating session with', result.suggestions.length, 'suggestions');
 
     let sessionRef: MonacoNextEditSuggestionSession;
 
@@ -522,12 +553,16 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
   }
 
   private pickProvider(document: TextDocument): RegisteredProvider | undefined {
+    console.log('[PickProvider] Checking', this.providers.length, 'providers');
     for (let i = this.providers.length - 1; i >= 0; i -= 1) {
       const provider = this.providers[i];
+      console.log(`[PickProvider] Checking provider ${i}:`, { id: provider.provider.id, selector: provider.selector });
       if (documentMatchesSelector(document, provider.selector)) {
+        console.log(`[PickProvider] Provider ${i} matches!`);
         return provider;
       }
     }
+    console.log('[PickProvider] No matching provider found');
     return undefined;
   }
 }
