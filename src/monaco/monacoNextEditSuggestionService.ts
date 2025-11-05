@@ -188,7 +188,8 @@ function applyMonacoEdits(
 
 function previewDecorationsFromSuggestion(
   monaco: Monaco,
-  suggestion: NextEditSuggestion
+  suggestion: NextEditSuggestion,
+  editor: MonacoEditor.IStandaloneCodeEditor
 ): MonacoEditor.IModelDeltaDecoration[] {
   const decorations: MonacoEditor.IModelDeltaDecoration[] = [];
   const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
@@ -211,35 +212,50 @@ function previewDecorationsFromSuggestion(
     }
 
     const lines = edit.insertText.split(/\r?\n/);
+    
+    // For multi-line insertText that starts with newline, we want to show the first non-empty line
+    // For single-line, we show it directly
     if (lines.length === 1) {
-      decorations.push({
-        range,
-        options: {
-          inlineClassName: ghostClassName,
-          after: {
-            content: lines[0],
-            inlineClassName: ghostClassName,
-          },
-        },
-      });
-    } else {
-      lines.forEach((line, index) => {
-        const deltaRange = new monaco.Range(
-          range.startLineNumber + index,
-          index === 0 ? range.startColumn : 1,
-          range.startLineNumber + index,
-          index === 0 ? range.startColumn : 1
-        );
+      // Single line - show as inline ghost text at the range position
+      if (lines[0].trim().length > 0) {
         decorations.push({
-          range: deltaRange,
+          range,
           options: {
+            inlineClassName: ghostClassName,
             after: {
-              content: line,
+              content: lines[0],
               inlineClassName: ghostClassName,
             },
           },
         });
-      });
+      }
+    } else {
+      // Multi-line - show the first non-empty line as ghost text at the current cursor position
+      // This works better than trying to place it on a line that doesn't exist yet
+      let firstNonEmptyLine = '';
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().length > 0) {
+          firstNonEmptyLine = lines[i];
+          break;
+        }
+      }
+      
+      if (firstNonEmptyLine.length > 0) {
+        // For multi-line inserts, show the first non-empty line at the current cursor position
+        // Monaco will render it inline at the range position
+        // This is better than trying to place it on a non-existent line
+        console.log('[PreviewDecorations] Multi-line insert, showing first line at cursor:', firstNonEmptyLine.substring(0, 50));
+        decorations.push({
+          range,
+          options: {
+            inlineClassName: ghostClassName,
+            after: {
+              content: firstNonEmptyLine,
+              inlineClassName: ghostClassName,
+            },
+          },
+        });
+      }
     }
   }
 
@@ -375,15 +391,51 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
       return;
     }
     console.log('[Session Render] Rendering suggestion:', suggestion.label);
-    const decorations = previewDecorationsFromSuggestion(this.monaco, suggestion);
+    const decorations = previewDecorationsFromSuggestion(this.monaco, suggestion, this.editor);
     console.log('[Session Render] Created', decorations.length, 'decorations:', decorations.map(d => ({
       range: d.range.toString(),
+      isEmpty: d.range.startLineNumber === d.range.endLineNumber && d.range.startColumn === d.range.endColumn,
       hasAfter: !!d.options.after,
       afterContent: d.options.after?.content?.substring(0, 50),
-      inlineClassName: d.options.inlineClassName
+      inlineClassName: d.options.inlineClassName,
+      options: JSON.stringify(d.options)
     })));
+    
+    // Log the model and editor state
+    const model = this.editor.getModel();
+    const selection = this.editor.getSelection();
+    console.log('[Session Render] Model:', {
+      lineCount: model?.getLineCount(),
+      value: model?.getValue().substring(0, 100),
+      selection: selection?.toString()
+    });
+    
     this.decorationIds = this.editor.deltaDecorations(this.decorationIds, decorations);
     console.log('[Session Render] Applied decorations, decoration IDs:', this.decorationIds);
+    
+    // Verify decorations were actually applied by checking the model
+    if (model && this.decorationIds.length > 0) {
+      const lineNumber = decorations[0]?.range?.startLineNumber || 1;
+      const appliedDecorations = model.getLineDecorations(lineNumber);
+      console.log('[Session Render] Applied decorations count for line', lineNumber, ':', appliedDecorations?.length || 0);
+    }
+    
+    // Check if decorations are visible in DOM after a short delay
+    setTimeout(() => {
+      const editorContainer = document.getElementById('editor');
+      if (editorContainer) {
+        const ghostElements = editorContainer.querySelectorAll('.next-edit-ghost-text, .next-edit-ghost-strong');
+        console.log('[Session Render] Ghost text elements in DOM after render:', ghostElements.length);
+        if (ghostElements.length > 0) {
+          console.log('[Session Render] First ghost element:', {
+            className: ghostElements[0].className,
+            textContent: ghostElements[0].textContent?.substring(0, 50),
+            computedStyle: window.getComputedStyle(ghostElements[0] as Element).display
+          });
+        }
+      }
+    }, 100);
+    
     const active = this.activeSuggestion;
     if (active) {
       this.changeEmitter.fire({
