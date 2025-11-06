@@ -330,7 +330,32 @@ export interface EditSuggestionSessionChangeEvent {
 }
 
 /**
- * Active suggestion session exposing navigation and acceptance controls.
+ * Event payload fired when a suggestion is accepted.
+ */
+export interface EditSuggestionAcceptedEvent {
+  /**
+   * The suggestion that was accepted.
+   */
+  readonly suggestion: EditSuggestion;
+  /**
+   * Whether the suggestion was successfully applied to the document.
+   */
+  readonly applied: boolean;
+}
+
+/**
+ * Event payload fired when a suggestion session is discarded.
+ */
+export interface EditSuggestionDiscardedEvent {
+  /**
+   * The session that was discarded.
+   */
+  readonly session: EditSuggestionSession;
+}
+
+/**
+ * Active suggestion session exposing read-only state and change notifications.
+ * All session control is managed by the host (editor).
  */
 export interface EditSuggestionSession {
   /**
@@ -346,37 +371,22 @@ export interface EditSuggestionSession {
    */
   readonly activeIndex: number;
   /**
-   * Programmatically reveals the session UI to the user.
-   */
-  reveal(): void;
-  /**
-   * Accepts the specified suggestion or the active suggestion when omitted.
-   */
-  accept(suggestion?: EditSuggestion): Promise<boolean>;
-  /**
-   * Cancels the session without applying any suggestions.
-   */
-  discard(): void;
-  /**
-   * Moves selection to the next suggestion in the list, wrapping if necessary.
-   */
-  selectNext(): void;
-  /**
-   * Moves selection to the previous suggestion in the list, wrapping if necessary.
-   */
-  selectPrevious(): void;
-  /**
-   * Sets the active suggestion by zero-based index.
-   */
-  setActiveIndex(index: number): void;
-  /**
    * Event fired whenever the session's active suggestion or suggestion set changes.
    */
   readonly onDidChange: Event<EditSuggestionSessionChangeEvent>;
+  /**
+   * Event fired when a suggestion from this session is accepted.
+   */
+  readonly onDidAccept: Event<EditSuggestionAcceptedEvent>;
+  /**
+   * Event fired when this session is discarded without accepting any suggestion.
+   */
+  readonly onDidDiscard: Event<EditSuggestionDiscardedEvent>;
 }
 
 /**
- * Entry point used by editors to register providers and control Next Edit suggestion sessions.
+ * Entry point used by editors to register providers and query suggestion session state.
+ * All session control (acceptance, navigation, dismissal) is managed by the host (editor).
  */
 export interface EditSuggestionService {
   /**
@@ -389,32 +399,13 @@ export interface EditSuggestionService {
   ): Disposable;
   /**
    * Invokes the suggestion service and returns the resulting session, if any suggestions are produced.
+   * The host (editor) manages all session control; clients can query state and listen to events.
    */
   invoke(triggerKind?: EditTriggerKind): Promise<EditSuggestionSession | undefined>;
   /**
    * Returns the currently active suggestion session, if one exists.
    */
   getActiveSession(): EditSuggestionSession | undefined;
-  /**
-   * Accepts the active suggestion, resolving to whether the suggestion was applied.
-   */
-  acceptActiveSuggestion(): Promise<boolean>;
-  /**
-   * Dismisses the active suggestion session without applying a suggestion.
-   */
-  discardActiveSuggestion(): void;
-  /**
-   * Advances the active suggestion to the next item in the list.
-   */
-  selectNextSuggestion(): void;
-  /**
-   * Moves the active suggestion to the previous item in the list.
-   */
-  selectPreviousSuggestion(): void;
-  /**
-   * Sets the active suggestion index for the current session.
-   */
-  setActiveSuggestionIndex(index: number): void;
   /**
    * Disposes the service and releases all associated resources.
    */
