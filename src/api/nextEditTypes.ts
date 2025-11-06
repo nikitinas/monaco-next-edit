@@ -276,20 +276,6 @@ export interface EditRegistrationOptions {
 }
 
 /**
- * Event payload describing how the active suggestion session has changed.
- */
-export interface EditSuggestionSessionChangeEvent {
-  /**
-   * Suggestion that is currently selected, if any.
-   */
-  readonly activeSuggestion: EditSuggestion | undefined;
-  /**
-   * All suggestions currently available within the session.
-   */
-  readonly allSuggestions: readonly EditSuggestion[];
-}
-
-/**
  * Event payload fired when a suggestion is accepted.
  */
 export interface EditSuggestionAcceptedEvent {
@@ -304,49 +290,18 @@ export interface EditSuggestionAcceptedEvent {
 }
 
 /**
- * Event payload fired when a suggestion session is discarded.
+ * Event payload fired when suggestions are discarded without being accepted.
  */
 export interface EditSuggestionDiscardedEvent {
   /**
-   * The session that was discarded.
-   */
-  readonly session: EditSuggestionSession;
-}
-
-/**
- * Active suggestion session exposing read-only state and change notifications.
- * All session control is managed by the host (editor).
- */
-export interface EditSuggestionSession {
-  /**
-   * Suggestion that is currently active.
-   */
-  readonly activeSuggestion?: EditSuggestion;
-  /**
-   * Full list of suggestions managed by the session.
+   * The suggestions that were discarded.
    */
   readonly suggestions: readonly EditSuggestion[];
-  /**
-   * Index of the active suggestion within the `suggestions` list.
-   */
-  readonly activeIndex: number;
-  /**
-   * Event fired whenever the session's active suggestion or suggestion set changes.
-   */
-  readonly onDidChange: Event<EditSuggestionSessionChangeEvent>;
-  /**
-   * Event fired when a suggestion from this session is accepted.
-   */
-  readonly onDidAccept: Event<EditSuggestionAcceptedEvent>;
-  /**
-   * Event fired when this session is discarded without accepting any suggestion.
-   */
-  readonly onDidDiscard: Event<EditSuggestionDiscardedEvent>;
 }
 
 /**
- * Entry point used by editors to register providers and query suggestion session state.
- * All session control (acceptance, navigation, dismissal) is managed by the host (editor).
+ * Entry point used by editors to register providers and listen to suggestion events.
+ * All suggestion control (acceptance, navigation, dismissal) is managed by the host (editor).
  */
 export interface EditSuggestionService {
   /**
@@ -358,14 +313,13 @@ export interface EditSuggestionService {
     options?: EditRegistrationOptions
   ): Disposable;
   /**
-   * Invokes the suggestion service and returns the resulting session, if any suggestions are produced.
-   * The host (editor) manages all session control; clients can query state and listen to events.
+   * Event fired when a suggestion is accepted.
    */
-  invoke(triggerKind?: EditTriggerKind): Promise<EditSuggestionSession | undefined>;
+  readonly onDidAcceptSuggestion: Event<EditSuggestionAcceptedEvent>;
   /**
-   * Returns the currently active suggestion session, if one exists.
+   * Event fired when suggestions are discarded without being accepted.
    */
-  getActiveSession(): EditSuggestionSession | undefined;
+  readonly onDidDiscardSuggestions: Event<EditSuggestionDiscardedEvent>;
   /**
    * Disposes the service and releases all associated resources.
    */
