@@ -181,47 +181,21 @@ export interface TextEdit {
 }
 
 /**
- * Customization hooks for how ghost text should be displayed.
- */
-export interface GhostTextOptions {
-  /**
-   * Strength of the preview styling, allowing for subtle or strong presentation.
-   */
-  readonly style?: 'subtle' | 'strong';
-  /**
-   * Additional inline class name applied to the rendered ghost text.
-   */
-  readonly inlineClassName?: string;
-}
-
-/**
- * A suggested change produced by a provider, displayed as ghost text and including edits and optional commands to run afterward.
+ * A suggested change produced by a provider, displayed as ghost text.
  */
 export interface EditSuggestion {
   /**
-   * Stable identifier for correlating the suggestion across resolve or acceptance calls.
+   * Stable identifier for correlating the suggestion across acceptance calls.
    */
   readonly id: string;
   /**
    * One or more edits that apply the suggestion to the document.
    */
   readonly edits: readonly TextEdit[];
-  /**
-   * Ranges within the ghost text that should be emphasized.
-   */
-  readonly emphasisRanges?: readonly Range[];
-  /**
-   * Optional ghost text configuration for how the suggestion should appear.
-   */
-  readonly ghostTextOptions?: GhostTextOptions;
-  /**
-   * Commands to execute after the suggestion is accepted.
-   */
-  readonly commands?: readonly Command[];
 }
 
 /**
- * Container returned by providers with suggested edits and optional telemetry payloads.
+ * Container returned by providers with suggested edits.
  */
 export interface EditSuggestionList {
   /**
@@ -232,10 +206,6 @@ export interface EditSuggestionList {
    * When true, indicates more suggestions may become available if the request is reissued.
    */
   readonly isIncomplete?: boolean;
-  /**
-   * Provider-supplied telemetry metadata forwarded to the host environment.
-   */
-  readonly telemetry?: Record<string, unknown>;
 }
 
 /**
@@ -255,24 +225,6 @@ export interface EditSuggestionProvider {
     context: EditSuggestionContext,
     token: CancellationToken
   ): ProviderResult<EditSuggestionList>;
-
-  /**
-   * Optionally resolves additional data for a suggestion after it has been presented.
-   */
-  resolveEditSuggestion?(
-    suggestion: EditSuggestion,
-    token: CancellationToken
-  ): ProviderResult<EditSuggestion | undefined>;
-}
-
-/**
- * Additional options that influence how a provider is executed by the service.
- */
-export interface EditRegistrationOptions {
-  /**
-   * If true, the provider receives events as the document changes during a session.
-   */
-  readonly captureDocumentChanges?: boolean;
 }
 
 /**
@@ -283,16 +235,12 @@ export interface EditSuggestionAcceptedEvent {
    * The suggestion that was accepted.
    */
   readonly suggestion: EditSuggestion;
-  /**
-   * Whether the suggestion was successfully applied to the document.
-   */
-  readonly applied: boolean;
 }
 
 /**
  * Event payload fired when suggestions are discarded without being accepted.
  */
-export interface EditSuggestionDiscardedEvent {
+export interface EditSuggestionsDiscardedEvent {
   /**
    * The suggestions that were discarded.
    */
@@ -310,13 +258,11 @@ export declare namespace vscode {
      * 
      * @param selector A document selector that defines the documents this provider is applicable to.
      * @param provider An edit suggestion provider.
-     * @param options Additional options that influence how the provider is executed.
      * @returns A disposable that unregisters this provider when disposed.
      */
     export function registerEditSuggestionProvider(
       selector: DocumentSelector,
-      provider: EditSuggestionProvider,
-      options?: EditRegistrationOptions
+      provider: EditSuggestionProvider
     ): Disposable;
 
     /**
@@ -327,7 +273,7 @@ export declare namespace vscode {
     /**
      * Event fired when edit suggestions are discarded without being accepted.
      */
-    export const onDidDiscardEditSuggestions: Event<EditSuggestionDiscardedEvent>;
+    export const onDidDiscardEditSuggestions: Event<EditSuggestionsDiscardedEvent>;
   }
 }
 
@@ -343,8 +289,7 @@ export interface EditSuggestionService {
    */
   registerProvider(
     selector: DocumentSelector,
-    provider: EditSuggestionProvider,
-    options?: EditRegistrationOptions
+    provider: EditSuggestionProvider
   ): Disposable;
   /**
    * Event fired when a suggestion is accepted.
@@ -353,7 +298,7 @@ export interface EditSuggestionService {
   /**
    * Event fired when suggestions are discarded without being accepted.
    */
-  readonly onDidDiscardSuggestions: Event<EditSuggestionDiscardedEvent>;
+  readonly onDidDiscardSuggestions: Event<EditSuggestionsDiscardedEvent>;
   /**
    * Disposes the service and releases all associated resources.
    */
