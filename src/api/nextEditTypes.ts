@@ -147,7 +147,7 @@ export type ProviderResult<T> = T | undefined | null | Promise<T | undefined | n
 /**
  * Describes how the Next Edit Suggestion service was triggered.
  */
-export const enum EditTriggerKind {
+export const enum EditSuggestionTriggerKind {
   Invoke = 0,
   Automatic = 1,
 }
@@ -159,7 +159,7 @@ export interface EditSuggestionContext {
   /**
    * Indicates whether the request was user-invoked or automatically triggered by heuristics.
    */
-  readonly triggerKind: EditTriggerKind;
+  readonly triggerKind: EditSuggestionTriggerKind;
   /**
    * Identifier of the last suggestion accepted in the current session, if any.
    */
@@ -169,7 +169,7 @@ export interface EditSuggestionContext {
 /**
  * Edit to apply to the document if a suggestion is accepted.
  */
-export interface EditTextEdit {
+export interface TextEdit {
   /**
    * Range of text that should be replaced.
    */
@@ -177,7 +177,7 @@ export interface EditTextEdit {
   /**
    * Replacement text to insert at the given range.
    */
-  readonly insertText: string;
+  readonly newText: string;
 }
 
 /**
@@ -205,7 +205,7 @@ export interface EditSuggestion {
   /**
    * One or more edits that apply the suggestion to the document.
    */
-  readonly edits: readonly EditTextEdit[];
+  readonly edits: readonly TextEdit[];
   /**
    * Ranges within the ghost text that should be emphasized.
    */
@@ -300,8 +300,42 @@ export interface EditSuggestionDiscardedEvent {
 }
 
 /**
+ * VS Code languages namespace for edit suggestion functionality.
+ * This namespace provides registration functions and events for edit suggestions.
+ */
+export declare namespace vscode {
+  export namespace languages {
+    /**
+     * Registers an edit suggestion provider for the given document selector.
+     * 
+     * @param selector A document selector that defines the documents this provider is applicable to.
+     * @param provider An edit suggestion provider.
+     * @param options Additional options that influence how the provider is executed.
+     * @returns A disposable that unregisters this provider when disposed.
+     */
+    export function registerEditSuggestionProvider(
+      selector: DocumentSelector,
+      provider: EditSuggestionProvider,
+      options?: EditRegistrationOptions
+    ): Disposable;
+
+    /**
+     * Event fired when an edit suggestion is accepted.
+     */
+    export const onDidAcceptEditSuggestion: Event<EditSuggestionAcceptedEvent>;
+
+    /**
+     * Event fired when edit suggestions are discarded without being accepted.
+     */
+    export const onDidDiscardEditSuggestions: Event<EditSuggestionDiscardedEvent>;
+  }
+}
+
+/**
  * Entry point used by editors to register providers and listen to suggestion events.
  * All suggestion control (acceptance, navigation, dismissal) is managed by the host (editor).
+ * 
+ * @deprecated This interface is for internal use. Use `vscode.languages.registerEditSuggestionProvider()` instead.
  */
 export interface EditSuggestionService {
   /**
