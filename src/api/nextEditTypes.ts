@@ -121,20 +121,6 @@ export interface Command {
 }
 
 /**
- * Markdown value rendered by the editor, optionally supporting codicon theme icons.
- */
-export interface MarkdownString {
-  /**
-   * Markdown source text to display.
-   */
-  readonly value: string;
-  /**
-   * When true, codicon theme icons embedded in the markdown should be rendered.
-   */
-  readonly supportThemeIcons?: boolean;
-}
-
-/**
  * Filters which documents a provider should match.
  */
 export type DocumentSelector = string | DocumentFilter | readonly (string | DocumentFilter)[];
@@ -195,7 +181,7 @@ export interface EditTextEdit {
 }
 
 /**
- * Customization hooks for how preview ghost text should be displayed.
+ * Customization hooks for how ghost text should be displayed.
  */
 export interface GhostTextOptions {
   /**
@@ -209,21 +195,7 @@ export interface GhostTextOptions {
 }
 
 /**
- * Additional presentation metadata shown while previewing a suggestion.
- */
-export interface EditPreview {
-  /**
-   * Ranges within the preview that should be emphasized.
-   */
-  readonly emphasisRanges?: readonly Range[];
-  /**
-   * Optional ghost text configuration for how previewed edits should appear.
-   */
-  readonly ghostTextOptions?: GhostTextOptions;
-}
-
-/**
- * A suggested change produced by a provider, including edits and optional commands to run afterward.
+ * A suggested change produced by a provider, displayed as ghost text and including edits and optional commands to run afterward.
  */
 export interface EditSuggestion {
   /**
@@ -231,29 +203,17 @@ export interface EditSuggestion {
    */
   readonly id: string;
   /**
-   * Label shown to the user when presenting the suggestion.
-   */
-  readonly label: string;
-  /**
-   * Optional secondary text describing the suggestion.
-   */
-  readonly detail?: string;
-  /**
-   * Rich documentation rendered alongside the suggestion preview.
-   */
-  readonly documentation?: MarkdownString;
-  /**
-   * Optional source identifier to attribute the suggestion.
-   */
-  readonly source?: string;
-  /**
    * One or more edits that apply the suggestion to the document.
    */
   readonly edits: readonly EditTextEdit[];
   /**
-   * Optional preview metadata displayed before accepting the edits.
+   * Ranges within the ghost text that should be emphasized.
    */
-  readonly preview?: EditPreview;
+  readonly emphasisRanges?: readonly Range[];
+  /**
+   * Optional ghost text configuration for how the suggestion should appear.
+   */
+  readonly ghostTextOptions?: GhostTextOptions;
   /**
    * Commands to execute after the suggestion is accepted.
    */
