@@ -200,6 +200,10 @@ function previewDecorationsFromSuggestion(
   console.log('[PreviewDecorations] Creating decorations for suggestion:', suggestion.label, 'with', suggestion.edits.length, 'edits');
   console.log('[PreviewDecorations] Ghost class name:', ghostClassName);
 
+  // Get the current selection/cursor position and model
+  const selection = editor.getSelection();
+  const model = editor.getModel();
+  
   for (const edit of suggestion.edits) {
     const range = toMonacoRange(monaco, edit.range);
     if (!range.isEmpty()) {
@@ -213,49 +217,57 @@ function previewDecorationsFromSuggestion(
 
     const lines = edit.insertText.split(/\r?\n/);
     
-    // For multi-line insertText that starts with newline, we want to show the first non-empty line
-    // For single-line, we show it directly
-    if (lines.length === 1) {
-      // Single line - show as inline ghost text at the range position
-      if (lines[0].trim().length > 0) {
-        decorations.push({
-          range,
-          options: {
-            inlineClassName: ghostClassName,
-            after: {
-              content: lines[0],
-              inlineClassName: ghostClassName,
-            },
-          },
-        });
+    // Find the first non-empty line to show as ghost text
+    let ghostTextContent = '';
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim().length > 0) {
+        ghostTextContent = lines[i];
+        break;
       }
-    } else {
-      // Multi-line - show the first non-empty line as ghost text at the current cursor position
-      // This works better than trying to place it on a line that doesn't exist yet
-      let firstNonEmptyLine = '';
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim().length > 0) {
-          firstNonEmptyLine = lines[i];
-          break;
-        }
+    }
+    
+    if (ghostTextContent.length > 0 && model) {
+      // Determine the best position for ghost text
+      // Monaco's 'after' content works best at the end of a line (within line bounds)
+      // or at a position where text can be inserted inline
+      let ghostLineNumber = range.startLineNumber;
+      let ghostColumn: number;
+      
+      // If the range is at the start of a line (column 1), place at the end of that line
+      if (range.startColumn === 1 && range.isEmpty()) {
+        const lineLength = model.getLineLength(ghostLineNumber);
+        ghostColumn = lineLength + 1; // End of line
+      } else {
+        // Use the range's end position
+        ghostColumn = range.endColumn;
       }
       
-      if (firstNonEmptyLine.length > 0) {
-        // For multi-line inserts, show the first non-empty line at the current cursor position
-        // Monaco will render it inline at the range position
-        // This is better than trying to place it on a non-existent line
-        console.log('[PreviewDecorations] Multi-line insert, showing first line at cursor:', firstNonEmptyLine.substring(0, 50));
-        decorations.push({
-          range,
-          options: {
-            inlineClassName: ghostClassName,
-            after: {
-              content: firstNonEmptyLine,
-              inlineClassName: ghostClassName,
-            },
-          },
-        });
+      // Ensure we don't exceed the line bounds
+      const maxColumn = model.getLineMaxColumn(ghostLineNumber);
+      if (ghostColumn > maxColumn) {
+        ghostColumn = maxColumn;
       }
+      
+      const ghostRange = new monaco.Range(ghostLineNumber, ghostColumn, ghostLineNumber, ghostColumn);
+      
+      console.log('[PreviewDecorations] Creating ghost text decoration:', {
+        range: ghostRange.toString(),
+        content: ghostTextContent.substring(0, 50),
+        className: ghostClassName,
+        lineLength: model.getLineLength(ghostLineNumber),
+        maxColumn: model.getLineMaxColumn(ghostLineNumber)
+      });
+      
+      decorations.push({
+        range: ghostRange,
+        options: {
+          inlineClassName: ghostClassName,
+          after: {
+            content: ghostTextContent,
+            inlineClassName: ghostClassName,
+          },
+        },
+      });
     }
   }
 
@@ -273,9 +285,69 @@ function previewDecorationsFromSuggestion(
   return decorations;
 }
 
+class GhostTextContentWidget implements MonacoEditor.IContentWidget {
+  private domNode: HTMLElement;
+  private position: MonacoEditor.IContentWidgetPosition | null = null;
+  private isBetweenLines: boolean;
+
+  constructor(
+    private readonly monaco: Monaco,
+    private readonly content: string,
+    private readonly className: string,
+    isBetweenLines: boolean = false
+  ) {
+    this.isBetweenLines = isBetweenLines;
+    
+    // Use a div for between-lines rendering (full line), span for inline
+    this.domNode = isBetweenLines ? document.createElement('div') : document.createElement('span');
+    this.domNode.className = className;
+    this.domNode.textContent = content;
+    this.domNode.style.color = 'rgba(148, 163, 184, 0.65)';
+    this.domNode.style.fontStyle = 'italic';
+    
+    if (isBetweenLines) {
+      // Style the div to appear as a full line between existing lines
+      this.domNode.style.display = 'block';
+      this.domNode.style.width = '100%';
+      this.domNode.style.height = '1.5em'; // Match line height
+      this.domNode.style.lineHeight = '1.5em';
+      this.domNode.style.whiteSpace = 'pre';
+      // Ensure it doesn't collapse
+      this.domNode.style.minHeight = '1.5em';
+    }
+  }
+
+  getId(): string {
+    return 'next-edit-ghost-text-widget';
+  }
+
+  getDomNode(): HTMLElement {
+    return this.domNode;
+  }
+
+  getPosition(): MonacoEditor.IContentWidgetPosition | null {
+    return this.position;
+  }
+
+  updatePosition(position: MonacoEditor.IContentWidgetPosition): void {
+    this.position = position;
+  }
+
+  updateContent(content: string): void {
+    this.domNode.textContent = content;
+  }
+
+  dispose(): void {
+    if (this.domNode.parentNode) {
+      this.domNode.parentNode.removeChild(this.domNode);
+    }
+  }
+}
+
 class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disposable {
   private readonly changeEmitter = new Emitter<NextEditSuggestionSessionChangeEvent>();
   private decorationIds: string[] = [];
+  private ghostTextWidget: GhostTextContentWidget | null = null;
   private disposed = false;
   private activeIndexValue = 0;
   private readonly suggestionsInternal: NextEditSuggestion[];
@@ -370,6 +442,11 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
     }
     this.disposed = true;
     this.decorationIds = this.editor.deltaDecorations(this.decorationIds, []);
+    if (this.ghostTextWidget) {
+      this.editor.removeContentWidget(this.ghostTextWidget);
+      this.ghostTextWidget.dispose();
+      this.ghostTextWidget = null;
+    }
   }
 
   updateSuggestion(index: number, suggestion: NextEditSuggestion): void {
@@ -386,55 +463,119 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
   private render(): void {
     const suggestion = this.activeSuggestion;
     if (!suggestion) {
-      console.log('[Session Render] No active suggestion, clearing decorations');
+      console.log('[Session Render] No active suggestion, clearing decorations and widget');
       this.decorationIds = this.editor.deltaDecorations(this.decorationIds, []);
+      if (this.ghostTextWidget) {
+        this.editor.removeContentWidget(this.ghostTextWidget);
+        this.ghostTextWidget.dispose();
+        this.ghostTextWidget = null;
+      }
       return;
     }
-    console.log('[Session Render] Rendering suggestion:', suggestion.label);
-    const decorations = previewDecorationsFromSuggestion(this.monaco, suggestion, this.editor);
-    console.log('[Session Render] Created', decorations.length, 'decorations:', decorations.map(d => ({
-      range: d.range.toString(),
-      isEmpty: d.range.startLineNumber === d.range.endLineNumber && d.range.startColumn === d.range.endColumn,
-      hasAfter: !!d.options.after,
-      afterContent: d.options.after?.content?.substring(0, 50),
-      inlineClassName: d.options.inlineClassName,
-      options: JSON.stringify(d.options)
-    })));
     
-    // Log the model and editor state
+    console.log('[Session Render] Rendering suggestion:', suggestion.label);
+    
+    // Apply decorations for diff ranges and emphasis
+    const decorations = previewDecorationsFromSuggestion(this.monaco, suggestion, this.editor);
+    this.decorationIds = this.editor.deltaDecorations(this.decorationIds, decorations);
+    
+    // Extract ghost text content from the first edit
     const model = this.editor.getModel();
     const selection = this.editor.getSelection();
-    console.log('[Session Render] Model:', {
-      lineCount: model?.getLineCount(),
-      value: model?.getValue().substring(0, 100),
-      selection: selection?.toString()
-    });
-    
-    this.decorationIds = this.editor.deltaDecorations(this.decorationIds, decorations);
-    console.log('[Session Render] Applied decorations, decoration IDs:', this.decorationIds);
-    
-    // Verify decorations were actually applied by checking the model
-    if (model && this.decorationIds.length > 0) {
-      const lineNumber = decorations[0]?.range?.startLineNumber || 1;
-      const appliedDecorations = model.getLineDecorations(lineNumber);
-      console.log('[Session Render] Applied decorations count for line', lineNumber, ':', appliedDecorations?.length || 0);
+    if (!model) {
+      return;
     }
     
-    // Check if decorations are visible in DOM after a short delay
-    setTimeout(() => {
-      const editorContainer = document.getElementById('editor');
-      if (editorContainer) {
-        const ghostElements = editorContainer.querySelectorAll('.next-edit-ghost-text, .next-edit-ghost-strong');
-        console.log('[Session Render] Ghost text elements in DOM after render:', ghostElements.length);
-        if (ghostElements.length > 0) {
-          console.log('[Session Render] First ghost element:', {
-            className: ghostElements[0].className,
-            textContent: ghostElements[0].textContent?.substring(0, 50),
-            computedStyle: window.getComputedStyle(ghostElements[0] as Element).display
-          });
+    // Find ghost text content from the suggestion and determine its position
+    let ghostTextContent = '';
+    let ghostTextLineOffset = 0; // How many lines after the edit range this content should appear
+    const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
+    
+    for (const edit of suggestion.edits) {
+      const lines = edit.insertText.split(/\r?\n/);
+      // Check if the first line is empty (starts with newline)
+      const startsWithNewline = lines.length > 1 && lines[0].trim().length === 0;
+      
+      // Find the first non-empty line
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().length > 0) {
+          ghostTextContent = lines[i];
+          ghostTextLineOffset = startsWithNewline ? 1 : 0; // If starts with newline, content is on next line
+          break;
         }
       }
-    }, 100);
+      if (ghostTextContent) break;
+    }
+    
+    if (ghostTextContent) {
+      // Determine position for ghost text widget
+      // For multi-line inserts that start with newline, position on the next line
+      const editRange = suggestion.edits[0]?.range;
+      const editLineNumber = editRange ? editRange.start.line + 1 : (selection?.positionLineNumber || 1);
+      const editColumn = editRange ? editRange.start.character + 1 : (selection?.positionColumn || 1);
+      
+      // Calculate target line: if insert starts with newline, use next line; otherwise use same line
+      const targetLineNumber = editLineNumber + ghostTextLineOffset;
+      const maxLineNumber = model.getLineCount();
+      
+      // If target line doesn't exist yet, we can still position there (Monaco will create it visually)
+      const ghostLineNumber = Math.min(targetLineNumber, maxLineNumber + 1);
+      
+      // For content on a new line, start at column 1 (or with indentation)
+      // For content on the same line, use end of line or edit column
+      let ghostColumn: number;
+      if (ghostTextLineOffset > 0) {
+        // Content is on a new line (between lines) - preserve full content with indentation
+        // For between-lines rendering, we use a full-width div that includes indentation
+        // Position at column 1, and the div will handle the indentation visually
+        ghostColumn = 1;
+        // Keep the full content including indentation for between-lines rendering
+        // The div will display it as a full line
+      } else {
+        // Content is on the same line - position at end of line or edit position
+        const lineLength = model.getLineLength(ghostLineNumber);
+        ghostColumn = editColumn <= lineLength ? lineLength + 1 : editColumn;
+      }
+      
+      console.log('[Session Render] Creating ghost text widget:', {
+        content: ghostTextContent.substring(0, 50),
+        position: { lineNumber: ghostLineNumber, column: ghostColumn },
+        lineOffset: ghostTextLineOffset,
+        className: ghostClassName,
+        editRange: editRange ? { start: editRange.start, end: editRange.end } : null
+      });
+      
+      // Remove existing widget if any
+      if (this.ghostTextWidget) {
+        this.editor.removeContentWidget(this.ghostTextWidget);
+        this.ghostTextWidget.dispose();
+      }
+      
+      // Create new widget - if it's on a new line (between lines), use div for full line rendering
+      const isBetweenLines = ghostTextLineOffset > 0;
+      this.ghostTextWidget = new GhostTextContentWidget(this.monaco, ghostTextContent, ghostClassName, isBetweenLines);
+      
+      // For between-lines rendering, position at the start of the new line (column 1)
+      // For inline rendering, use the calculated column
+      const widgetColumn = isBetweenLines ? 1 : ghostColumn;
+      
+      this.ghostTextWidget.updatePosition({
+        position: { lineNumber: ghostLineNumber, column: widgetColumn },
+        preference: isBetweenLines 
+          ? [this.monaco.editor.ContentWidgetPositionPreference.BELOW]
+          : [this.monaco.editor.ContentWidgetPositionPreference.EXACT],
+      });
+      
+      this.editor.addContentWidget(this.ghostTextWidget);
+      console.log('[Session Render] Ghost text widget added to editor at line', ghostLineNumber, isBetweenLines ? '(between lines)' : '(inline)');
+    } else {
+      // No ghost text to show, remove widget if exists
+      if (this.ghostTextWidget) {
+        this.editor.removeContentWidget(this.ghostTextWidget);
+        this.ghostTextWidget.dispose();
+        this.ghostTextWidget = null;
+      }
+    }
     
     const active = this.activeSuggestion;
     if (active) {
