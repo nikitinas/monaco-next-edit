@@ -8,15 +8,15 @@ import {
   DocumentFilter,
   Disposable,
   Event,
-  NextEditRegistrationOptions,
-  NextEditSuggestion,
-  NextEditSuggestionContext,
-  NextEditSuggestionProvider,
-  NextEditSuggestionService,
-  NextEditSuggestionSession,
-  NextEditSuggestionSessionChangeEvent,
-  NextEditTextEdit,
-  NextEditTriggerKind,
+  EditRegistrationOptions,
+  EditSuggestion,
+  EditSuggestionContext,
+  EditSuggestionProvider,
+  EditSuggestionService,
+  EditSuggestionSession,
+  EditSuggestionSessionChangeEvent,
+  EditTextEdit,
+  EditTriggerKind,
   Position,
   Selection,
   TextDocument,
@@ -26,8 +26,8 @@ type ProviderResult<T> = T | undefined | null | Promise<T | undefined | null>;
 
 interface RegisteredProvider {
   readonly selector: DocumentSelector;
-  readonly provider: NextEditSuggestionProvider;
-  readonly options?: NextEditRegistrationOptions;
+  readonly provider: EditSuggestionProvider;
+  readonly options?: EditRegistrationOptions;
 }
 
 class Emitter<T> implements Disposable {
@@ -174,7 +174,7 @@ function documentMatchesSelector(document: TextDocument, selector: DocumentSelec
 function applyMonacoEdits(
   monaco: Monaco,
   editor: MonacoEditor.IStandaloneCodeEditor,
-  edits: readonly NextEditTextEdit[]
+  edits: readonly EditTextEdit[]
 ): void {
   const operations = edits.map<MonacoEditor.IIdentifiedSingleEditOperation>((edit) => ({
     range: toMonacoRange(monaco, edit.range),
@@ -188,7 +188,7 @@ function applyMonacoEdits(
 
 function previewDecorationsFromSuggestion(
   monaco: Monaco,
-  suggestion: NextEditSuggestion,
+  suggestion: EditSuggestion,
   editor: MonacoEditor.IStandaloneCodeEditor
 ): MonacoEditor.IModelDeltaDecoration[] {
   const decorations: MonacoEditor.IModelDeltaDecoration[] = [];
@@ -344,33 +344,33 @@ class GhostTextContentWidget implements MonacoEditor.IContentWidget {
   }
 }
 
-class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disposable {
-  private readonly changeEmitter = new Emitter<NextEditSuggestionSessionChangeEvent>();
+class MonacoNextEditSuggestionSession implements EditSuggestionSession, Disposable {
+  private readonly changeEmitter = new Emitter<EditSuggestionSessionChangeEvent>();
   private decorationIds: string[] = [];
   private ghostTextWidget: GhostTextContentWidget | null = null;
   private disposed = false;
   private activeIndexValue = 0;
-  private readonly suggestionsInternal: NextEditSuggestion[];
+  private readonly suggestionsInternal: EditSuggestion[];
 
-  readonly onDidChange: Event<NextEditSuggestionSessionChangeEvent> = this.changeEmitter.event;
+  readonly onDidChange: Event<EditSuggestionSessionChangeEvent> = this.changeEmitter.event;
 
   constructor(
     private readonly editor: MonacoEditor.IStandaloneCodeEditor,
     private readonly monaco: Monaco,
-    suggestions: readonly NextEditSuggestion[],
-    private readonly onAccept: (suggestion: NextEditSuggestion) => Promise<boolean>,
+    suggestions: readonly EditSuggestion[],
+    private readonly onAccept: (suggestion: EditSuggestion) => Promise<boolean>,
     private readonly onDiscard: () => void,
-    private readonly onSelect: (index: number, suggestion: NextEditSuggestion) => void
+    private readonly onSelect: (index: number, suggestion: EditSuggestion) => void
   ) {
     this.suggestionsInternal = suggestions.map((s) => ({ ...s }));
     this.render();
   }
 
-  get suggestions(): readonly NextEditSuggestion[] {
+  get suggestions(): readonly EditSuggestion[] {
     return this.suggestionsInternal;
   }
 
-  get activeSuggestion(): NextEditSuggestion | undefined {
+  get activeSuggestion(): EditSuggestion | undefined {
     return this.suggestionsInternal[this.activeIndexValue];
   }
 
@@ -391,7 +391,7 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
     this.editor.revealRangeInCenter(range, this.monaco.editor.ScrollType.Smooth);
   }
 
-  async accept(suggestion?: NextEditSuggestion): Promise<boolean> {
+  async accept(suggestion?: EditSuggestion): Promise<boolean> {
     const target = suggestion ?? this.activeSuggestion;
     if (!target) {
       return false;
@@ -449,7 +449,7 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
     }
   }
 
-  updateSuggestion(index: number, suggestion: NextEditSuggestion): void {
+  updateSuggestion(index: number, suggestion: EditSuggestion): void {
     this.suggestionsInternal[index] = { ...suggestion };
     if (index === this.activeIndexValue) {
       this.render();
@@ -588,11 +588,11 @@ class MonacoNextEditSuggestionSession implements NextEditSuggestionSession, Disp
 }
 
 export interface InvokeOptions {
-  readonly triggerKind?: NextEditTriggerKind;
+  readonly triggerKind?: EditTriggerKind;
   readonly selectIndex?: number;
 }
 
-export class MonacoNextEditSuggestionService implements NextEditSuggestionService, Disposable {
+export class MonacoNextEditSuggestionService implements EditSuggestionService, Disposable {
   private readonly providers: RegisteredProvider[] = [];
   private activeSession: MonacoNextEditSuggestionSession | undefined;
   private pendingRequest: CancellationTokenSource | undefined;
@@ -602,8 +602,8 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
 
   registerProvider(
     selector: DocumentSelector,
-    provider: NextEditSuggestionProvider,
-    options?: NextEditRegistrationOptions
+    provider: EditSuggestionProvider,
+    options?: EditRegistrationOptions
   ): Disposable {
     const entry: RegisteredProvider = { selector, provider, options };
     this.providers.push(entry);
@@ -617,7 +617,7 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
     };
   }
 
-  async invoke(triggerKind: NextEditTriggerKind = NextEditTriggerKind.Invoke): Promise<NextEditSuggestionSession | undefined> {
+  async invoke(triggerKind: EditTriggerKind = EditTriggerKind.Invoke): Promise<EditSuggestionSession | undefined> {
     const model = this.editor.getModel();
     if (!model) {
       console.log('[Invoke] No model found');
@@ -646,13 +646,13 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
     }
 
     const selection = fromMonacoSelection(this.monaco, this.editor.getSelection());
-    const context: NextEditSuggestionContext = {
+    const context: EditSuggestionContext = {
       triggerKind,
       lastAcceptedSuggestionId: this.lastAcceptedSuggestionId,
     };
 
-    console.log('[Invoke] Calling provideNextEditSuggestions with:', { selection, context });
-    const result = await asPromise(provider.provider.provideNextEditSuggestions(document, selection, context, requestCts.token));
+    console.log('[Invoke] Calling provideEditSuggestions with:', { selection, context });
+    const result = await asPromise(provider.provider.provideEditSuggestions(document, selection, context, requestCts.token));
     console.log('[Invoke] Provider returned:', result ? { suggestionsCount: result.suggestions.length, suggestions: result.suggestions.map(s => s.label) } : 'undefined');
 
     if (requestCts !== this.pendingRequest || requestCts.token.isCancellationRequested) {
@@ -668,12 +668,12 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
 
     let sessionRef: MonacoNextEditSuggestionSession;
 
-    const handleSelect = async (index: number, suggestion: NextEditSuggestion) => {
-      if (!provider.provider.resolveNextEditSuggestion) {
+    const handleSelect = async (index: number, suggestion: EditSuggestion) => {
+      if (!provider.provider.resolveEditSuggestion) {
         return;
       }
       const resolved = await asPromise(
-        provider.provider.resolveNextEditSuggestion(suggestion, requestCts.token)
+        provider.provider.resolveEditSuggestion(suggestion, requestCts.token)
       );
       if (resolved && sessionRef) {
         sessionRef.updateSuggestion(index, resolved);
@@ -709,7 +709,7 @@ export class MonacoNextEditSuggestionService implements NextEditSuggestionServic
     return session;
   }
 
-  getActiveSession(): NextEditSuggestionSession | undefined {
+  getActiveSession(): EditSuggestionSession | undefined {
     return this.activeSession;
   }
 

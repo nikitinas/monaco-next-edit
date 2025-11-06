@@ -2,9 +2,9 @@ type MonacoNamespace = typeof import('monaco-editor');
 
 import {
   type Disposable,
-  type NextEditSuggestionSession,
-  type NextEditSuggestionSessionChangeEvent,
-  NextEditTriggerKind,
+  type EditSuggestionSession,
+  type EditSuggestionSessionChangeEvent,
+  EditTriggerKind,
 } from '../api/index.js';
 import { registerPredictiveEditingDemo } from '../demo/mockExtension.js';
 import { loadMonaco } from '../monaco/monacoLoader.js';
@@ -86,8 +86,8 @@ function formatMarkdown(value: string): string {
 }
 
 function renderSuggestionFeed(
-  session: NextEditSuggestionSession | undefined,
-  event: NextEditSuggestionSessionChangeEvent | undefined,
+  session: EditSuggestionSession | undefined,
+  event: EditSuggestionSessionChangeEvent | undefined,
   listElement: HTMLOListElement,
   statusElement: HTMLElement,
   docElement: HTMLElement
@@ -267,7 +267,7 @@ export async function startDemoSite(): Promise<void> {
   const registration = registerPredictiveEditingDemo(editor);
   const service = registration.service;
 
-  function attachSession(session: NextEditSuggestionSession | undefined): void {
+  function attachSession(session: EditSuggestionSession | undefined): void {
     sessionSubscription?.dispose();
     sessionSubscription = undefined;
 
@@ -327,7 +327,7 @@ export async function startDemoSite(): Promise<void> {
   invokeButton?.addEventListener('click', async () => {
     suggestionStatus.textContent = 'Generating suggestions...';
     try {
-      const session = await service.invoke(NextEditTriggerKind.Invoke);
+      const session = await service.invoke(EditTriggerKind.Invoke);
       console.log('Invoke result:', session ? `Session with ${session.suggestions.length} suggestions` : 'No session');
       if (!session) {
         suggestionStatus.textContent = 'No suggestions available for the current selection.';

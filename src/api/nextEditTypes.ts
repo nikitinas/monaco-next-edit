@@ -161,7 +161,7 @@ export type ProviderResult<T> = T | undefined | null | Promise<T | undefined | n
 /**
  * Describes how the Next Edit Suggestion service was triggered.
  */
-export const enum NextEditTriggerKind {
+export const enum EditTriggerKind {
   Invoke = 0,
   Automatic = 1,
 }
@@ -169,11 +169,11 @@ export const enum NextEditTriggerKind {
 /**
  * Context information supplied when requesting next edit suggestions.
  */
-export interface NextEditSuggestionContext {
+export interface EditSuggestionContext {
   /**
    * Indicates whether the request was user-invoked or automatically triggered by heuristics.
    */
-  readonly triggerKind: NextEditTriggerKind;
+  readonly triggerKind: EditTriggerKind;
   /**
    * Identifier of the last suggestion accepted in the current session, if any.
    */
@@ -183,7 +183,7 @@ export interface NextEditSuggestionContext {
 /**
  * Edit to apply to the document if a suggestion is accepted.
  */
-export interface NextEditTextEdit {
+export interface EditTextEdit {
   /**
    * Range of text that should be replaced.
    */
@@ -211,7 +211,7 @@ export interface GhostTextOptions {
 /**
  * Additional presentation metadata shown while previewing a suggestion.
  */
-export interface NextEditPreview {
+export interface EditPreview {
   /**
    * Ranges within the preview that should be emphasized.
    */
@@ -225,7 +225,7 @@ export interface NextEditPreview {
 /**
  * A suggested change produced by a provider, including edits and optional commands to run afterward.
  */
-export interface NextEditSuggestion {
+export interface EditSuggestion {
   /**
    * Stable identifier for correlating the suggestion across resolve or acceptance calls.
    */
@@ -249,11 +249,11 @@ export interface NextEditSuggestion {
   /**
    * One or more edits that apply the suggestion to the document.
    */
-  readonly edits: readonly NextEditTextEdit[];
+  readonly edits: readonly EditTextEdit[];
   /**
    * Optional preview metadata displayed before accepting the edits.
    */
-  readonly preview?: NextEditPreview;
+  readonly preview?: EditPreview;
   /**
    * Commands to execute after the suggestion is accepted.
    */
@@ -263,11 +263,11 @@ export interface NextEditSuggestion {
 /**
  * Container returned by providers with suggested edits and optional telemetry payloads.
  */
-export interface NextEditSuggestionList {
+export interface EditSuggestionList {
   /**
    * Suggestions generated for the current document and selection.
    */
-  readonly suggestions: readonly NextEditSuggestion[];
+  readonly suggestions: readonly EditSuggestion[];
   /**
    * When true, indicates more suggestions may become available if the request is reissued.
    */
@@ -281,7 +281,7 @@ export interface NextEditSuggestionList {
 /**
  * Provider that supplies next edit suggestions for matching documents.
  */
-export interface NextEditSuggestionProvider {
+export interface EditSuggestionProvider {
   /**
    * Unique identifier for the provider implementation.
    */
@@ -289,26 +289,26 @@ export interface NextEditSuggestionProvider {
   /**
    * Computes suggestions for the given document, selection, and context.
    */
-  provideNextEditSuggestions(
+  provideEditSuggestions(
     document: TextDocument,
     selection: Selection,
-    context: NextEditSuggestionContext,
+    context: EditSuggestionContext,
     token: CancellationToken
-  ): ProviderResult<NextEditSuggestionList>;
+  ): ProviderResult<EditSuggestionList>;
 
   /**
    * Optionally resolves additional data for a suggestion after it has been presented.
    */
-  resolveNextEditSuggestion?(
-    suggestion: NextEditSuggestion,
+  resolveEditSuggestion?(
+    suggestion: EditSuggestion,
     token: CancellationToken
-  ): ProviderResult<NextEditSuggestion | undefined>;
+  ): ProviderResult<EditSuggestion | undefined>;
 }
 
 /**
  * Additional options that influence how a provider is executed by the service.
  */
-export interface NextEditRegistrationOptions {
+export interface EditRegistrationOptions {
   /**
    * If true, the provider receives events as the document changes during a session.
    */
@@ -318,29 +318,29 @@ export interface NextEditRegistrationOptions {
 /**
  * Event payload describing how the active suggestion session has changed.
  */
-export interface NextEditSuggestionSessionChangeEvent {
+export interface EditSuggestionSessionChangeEvent {
   /**
    * Suggestion that is currently selected, if any.
    */
-  readonly activeSuggestion: NextEditSuggestion | undefined;
+  readonly activeSuggestion: EditSuggestion | undefined;
   /**
    * All suggestions currently available within the session.
    */
-  readonly allSuggestions: readonly NextEditSuggestion[];
+  readonly allSuggestions: readonly EditSuggestion[];
 }
 
 /**
  * Active suggestion session exposing navigation and acceptance controls.
  */
-export interface NextEditSuggestionSession {
+export interface EditSuggestionSession {
   /**
    * Suggestion that is currently active.
    */
-  readonly activeSuggestion?: NextEditSuggestion;
+  readonly activeSuggestion?: EditSuggestion;
   /**
    * Full list of suggestions managed by the session.
    */
-  readonly suggestions: readonly NextEditSuggestion[];
+  readonly suggestions: readonly EditSuggestion[];
   /**
    * Index of the active suggestion within the `suggestions` list.
    */
@@ -352,7 +352,7 @@ export interface NextEditSuggestionSession {
   /**
    * Accepts the specified suggestion or the active suggestion when omitted.
    */
-  accept(suggestion?: NextEditSuggestion): Promise<boolean>;
+  accept(suggestion?: EditSuggestion): Promise<boolean>;
   /**
    * Cancels the session without applying any suggestions.
    */
@@ -372,29 +372,29 @@ export interface NextEditSuggestionSession {
   /**
    * Event fired whenever the session's active suggestion or suggestion set changes.
    */
-  readonly onDidChange: Event<NextEditSuggestionSessionChangeEvent>;
+  readonly onDidChange: Event<EditSuggestionSessionChangeEvent>;
 }
 
 /**
  * Entry point used by editors to register providers and control Next Edit suggestion sessions.
  */
-export interface NextEditSuggestionService {
+export interface EditSuggestionService {
   /**
    * Registers a provider for the given document selector and returns a disposable to unregister it.
    */
   registerProvider(
     selector: DocumentSelector,
-    provider: NextEditSuggestionProvider,
-    options?: NextEditRegistrationOptions
+    provider: EditSuggestionProvider,
+    options?: EditRegistrationOptions
   ): Disposable;
   /**
    * Invokes the suggestion service and returns the resulting session, if any suggestions are produced.
    */
-  invoke(triggerKind?: NextEditTriggerKind): Promise<NextEditSuggestionSession | undefined>;
+  invoke(triggerKind?: EditTriggerKind): Promise<EditSuggestionSession | undefined>;
   /**
    * Returns the currently active suggestion session, if one exists.
    */
-  getActiveSession(): NextEditSuggestionSession | undefined;
+  getActiveSession(): EditSuggestionSession | undefined;
   /**
    * Accepts the active suggestion, resolving to whether the suggestion was applied.
    */

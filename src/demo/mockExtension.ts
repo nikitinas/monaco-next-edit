@@ -4,13 +4,13 @@ import {
   CancellationToken,
   Command,
   MarkdownString,
-  NextEditSuggestion,
-  NextEditSuggestionContext,
-  NextEditSuggestionList,
-  NextEditSuggestionProvider,
-  NextEditSuggestionService,
-  NextEditTextEdit,
-  NextEditTriggerKind,
+  EditSuggestion,
+  EditSuggestionContext,
+  EditSuggestionList,
+  EditSuggestionProvider,
+  EditSuggestionService,
+  EditTextEdit,
+  EditTriggerKind,
   Range,
   Selection,
   TextDocument,
@@ -21,12 +21,12 @@ import { getMonaco } from '../monaco/monacoLoader.js';
 /**
  * Demonstrates how a VS Code extension could use the proposed API surface.
  * This module intentionally depends only on Monaco primitives and the proposed
- * NextEditSuggestionService, making it suitable for inclusion in either a web
+ * EditSuggestionService, making it suitable for inclusion in either a web
  * playground or VS Code core once the API solidifies.
  */
 
 export interface DemoRegistration {
-  readonly service: NextEditSuggestionService;
+  readonly service: EditSuggestionService;
   dispose(): void;
 }
 
@@ -46,7 +46,7 @@ export function registerPredictiveEditingDemo(editor: MonacoEditor.IStandaloneCo
     contextMenuGroupId: 'navigation',
     contextMenuOrder: 1.5,
     run: async () => {
-      await service.invoke(NextEditTriggerKind.Invoke);
+      await service.invoke(EditTriggerKind.Invoke);
     },
   });
 
@@ -86,7 +86,7 @@ export function registerPredictiveEditingDemo(editor: MonacoEditor.IStandaloneCo
       clearTimeout(autoTriggerHandle);
     }
     autoTriggerHandle = setTimeout(() => {
-      void service.invoke(NextEditTriggerKind.Automatic);
+      void service.invoke(EditTriggerKind.Automatic);
     }, 300);
   });
 
@@ -106,16 +106,16 @@ export function registerPredictiveEditingDemo(editor: MonacoEditor.IStandaloneCo
   };
 }
 
-class PredictiveNextEditProvider implements NextEditSuggestionProvider {
+class PredictiveNextEditProvider implements EditSuggestionProvider {
   readonly id = 'demo.predictiveNextEdit';
 
-  async provideNextEditSuggestions(
+  async provideEditSuggestions(
     document: TextDocument,
     selection: Selection,
-    context: NextEditSuggestionContext,
+    context: EditSuggestionContext,
     token: CancellationToken
-  ): Promise<NextEditSuggestionList | undefined> {
-    console.log('[Provider] provideNextEditSuggestions called', { document: document.languageId, selection, context });
+  ): Promise<EditSuggestionList | undefined> {
+    console.log('[Provider] provideEditSuggestions called', { document: document.languageId, selection, context });
     const lines = document.getText().split(/\r?\n/);
     const currentLineIndex = Math.min(selection.active.line, lines.length - 1);
     const currentLine = lines[currentLineIndex] ?? '';
@@ -127,7 +127,7 @@ class PredictiveNextEditProvider implements NextEditSuggestionProvider {
       return undefined;
     }
 
-    const suggestions: NextEditSuggestion[] = [];
+    const suggestions: EditSuggestion[] = [];
 
     suggestions.push(createInlineLoggingSuggestion(selection, indent, currentLine.length));
     suggestions.push(createTryCatchSuggestion(selection, indent, selectedText));
@@ -145,10 +145,10 @@ class PredictiveNextEditProvider implements NextEditSuggestionProvider {
     return { suggestions };
   }
 
-  async resolveNextEditSuggestion(
-    suggestion: NextEditSuggestion,
+  async resolveEditSuggestion(
+    suggestion: EditSuggestion,
     _token: CancellationToken
-  ): Promise<NextEditSuggestion | undefined> {
+  ): Promise<EditSuggestion | undefined> {
     const markdown: MarkdownString = {
       value: suggestion.id.includes('try-catch')
         ? 'Wraps the highlighted statements in a `try/catch` block and forwards the error to the caller.'
@@ -167,9 +167,9 @@ function createInlineLoggingSuggestion(
   selection: Selection,
   indent: string,
   currentLineLength: number
-): NextEditSuggestion {
+): EditSuggestion {
   const range = createCollapsedRange(selection.active.line, currentLineLength);
-  const logEdit: NextEditTextEdit = {
+  const logEdit: EditTextEdit = {
     range,
     insertText: `\n${indent}console.log('next edit prediction', { /* TODO: insert symbols */ });`,
   };
@@ -188,12 +188,12 @@ function createInlineLoggingSuggestion(
   };
 }
 
-function createTryCatchSuggestion(selection: Selection, indent: string, selectedText: string): NextEditSuggestion {
+function createTryCatchSuggestion(selection: Selection, indent: string, selectedText: string): EditSuggestion {
   const start = selection.start;
   const end = selection.end;
   const normalizedSelection = normalizeSelectionText(selectedText, indent);
   const wrapped = `${indent}try {\n${normalizedSelection}\n${indent}} catch (error) {\n${indent}  throw error;\n${indent}}`;
-  const edit: NextEditTextEdit = {
+  const edit: EditTextEdit = {
     range: { start, end },
     insertText: wrapped,
   };
@@ -213,7 +213,7 @@ function createTryCatchSuggestion(selection: Selection, indent: string, selected
   };
 }
 
-function createCommandsForSuggestion(suggestion: NextEditSuggestion): readonly Command[] | undefined {
+function createCommandsForSuggestion(suggestion: EditSuggestion): readonly Command[] | undefined {
   const commands: Command[] = [
     {
       title: 'Explain This Suggestion',
