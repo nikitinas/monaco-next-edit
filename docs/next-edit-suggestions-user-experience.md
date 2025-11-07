@@ -4,10 +4,11 @@ This guide describes the Next Edit Suggestions experience from a user’s point 
 
 ### Suggestion Lifecycle
 - **Manual trigger**: Run `Predict Next Edit` (command or shortcut) to request suggestions for the current selection or caret position.
-- **Idle invocation**: After roughly 1.5 s of inactivity in an area where a prior suggestion was accepted, the editor re-queries providers. A subtle pulse on the Tab badge indicates fresh suggestions without stealing focus.
+- **Idle invocation**: After roughly 1.5 s of inactivity, the editor re-queries providers for the current context—even if no suggestion was accepted previously. New suggestions fade in with a subtle Tab badge pulse so the editor never steals focus.
 - **Automatic follow-up**: Accepting a suggestion can prompt an immediate re-request so you can stay in flow; providers decide whether to provide follow-up edits.
 - **Session lifetime**: A session stays active until you accept, discard, or type through any previewed range. Moving the caret outside the session cancels the preview.
 - **Scope limit**: Each suggestion may include at most five lines of edits (combined insertions and deletions). Over-limit edits are truncated with guidance to refine the request.
+- **Adaptive cooldown**: If you dismiss identical suggestions twice in a row, the editor backs off for a short cooldown (default 60 s) or until the surrounding text changes significantly to avoid repetitive prompts.
 
 ### Previewing and Navigating
 - **Tab traversal**: Press `Tab` to jump into the first edit range of the active suggestion; `Shift+Tab` walks backward. Each press advances to the next range so you can inspect insertions, replacements, or deletions in context.
