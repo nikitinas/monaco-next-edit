@@ -12,6 +12,12 @@ This guide describes the Next Edit Suggestions feature from an editor user's per
 - **Cycling edits**: Continued `Tab` presses walk the caret through every range the suggestion will touch (insertions, replacements, deletions). Shift+Tab walks backwards.
 - **Exit behavior**: Leaving the last range brings the caret back to its starting position so you can continue typing without applying the edit.
 
+### Tab Navigation Widget
+- **Inline badge**: A pill-shaped `Tab` badge appears at the right edge of the current line whenever the active suggestion has an edit at the caret position. Its presence signals that pressing `Tab` will jump into a previewed edit.
+- **Viewport jump hints**: When the next edit range falls above or below the visible viewport, the badge detaches and floats near the top or bottom edge of the editor with an arrow indicating the direction of travel. Pressing `Tab` scrolls the editor to reveal that range and places the caret there.
+- **Visibility rules**: The widget only renders while a suggestion session is active, hides if you move the caret manually, and reappears when you return to the session’s anchor position.
+- **Focus states**: Hovering or keyboard focus emphasizes the badge so screen readers announce “Press Tab to preview next edit.”
+
 ### Accepting Suggestions
 - **Single keystroke acceptance**: Pressing `Tab` from the original caret position applies the active suggestion in a single undo stop.
 - **Partial acceptance**: Not supported in the initial release—accepting applies every range previewed in the session. Discard (Escape) dismisses the entire suggestion.
