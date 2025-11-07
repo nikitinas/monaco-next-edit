@@ -13,7 +13,7 @@ This guide describes the Next Edit Suggestions feature from an editor user's per
 - **Exit behavior**: Leaving the last range brings the caret back to its starting position so you can continue typing without applying the edit.
 
 ### Accepting Suggestions
-- **Single keystroke acceptance**: `Tab` (from the original caret position) or `Enter` accepts the active suggestion and applies all edits in one undo stop.
+- **Single keystroke acceptance**: Pressing `Tab` from the original caret position applies the active suggestion in a single undo stop.
 - **Partial acceptance**: Not supported in the initial release—accepting applies every range previewed in the session. Discard (Escape) dismisses the entire suggestion.
 - **Post-accept workflow**: After acceptance, the preview clears, the caret moves to the location where the edit leaves focus, and automatic follow-up (if enabled) can surface the next suggestion.
 
@@ -27,5 +27,4 @@ This guide describes the Next Edit Suggestions feature from an editor user's per
 ### Summary of Keyboard Shortcuts
 - `Tab`: Jump to the next edit range or accept when invoked from the original caret position.
 - `Shift+Tab`: Jump to the previous edit range.
-- `Enter`: Accept the active suggestion without range navigation.
 - `Escape`: Discard the current suggestion session.
