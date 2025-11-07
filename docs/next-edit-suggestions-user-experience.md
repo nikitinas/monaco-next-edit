@@ -6,6 +6,7 @@ This guide describes the Next Edit Suggestions feature from an editor user's per
 - **Manual trigger**: Running the `Predict Next Edit` command (or its bound shortcut) asks the active provider for suggestions scoped to the current cursor selection.
 - **Automatic follow-up**: After a suggestion is accepted, the editor may automatically request another prediction to keep momentum; providers decide whether to respond based on context.
 - **Session lifetime**: A visible suggestion session stays active until you accept, discard, or type through the preview. Typing outside the suggested ranges cancels the preview and the session.
+- **Idle invocation**: When the editor detects you have been idle for a configurable delay (default 1.5 s) and the caret sits in a context where a previous suggestion was accepted, it silently queries providers again. A subtle pulse on the Tab widget announces the new suggestion without stealing focus.
 
 ### Navigating with Tab
 - **Focus transfer**: Pressing `Tab` while a suggestion session is active moves the caret to the first edit in the active suggestion, letting you inspect the proposed change in place.
