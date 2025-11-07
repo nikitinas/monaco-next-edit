@@ -53,3 +53,15 @@ See `PredictiveNextEditProvider` in `src/demo/mockExtension.ts` for a fully type
 - [x] Monaco reference implementation with session management and cancellation.
 - [x] Demo provider showcasing predictive logging and try/catch wrapping suggestions.
 - [ ] Additional telemetry, theming, and streaming behaviours are noted as follow-up questions in the design doc.
+
+## VS Code Inline Completion Extension
+
+The repository now includes an experimental VS Code extension that reuses the predictive logging and try/catch ideas through the stable inline completion API. The extension lives in `extensions/next-edit-inline-completions`.
+
+```bash
+cd extensions/next-edit-inline-completions
+npm install
+npm run compile
+```
+
+Launch the “Run Extension” configuration in VS Code to experiment with the inline suggestions in an Extension Development Host window. Use the `Next Edit: Explain Active Suggestion` command to surface contextual documentation or `Next Edit: Generate Telemetry Stub` to drop a logging stub for the last shown suggestion.
