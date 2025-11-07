@@ -22,6 +22,7 @@ This guide describes the Next Edit Suggestions experience from a user’s point 
 
 ### Accepting and Post-Accept Flow
 - **Single-step acceptance**: Press `Tab` from the original caret position to apply the active suggestion in a single undo stop. Escape discards the session; partial acceptance is not supported.
+- **Nearby acceptance**: When the highlighted range sits within five lines of the caret, `Tab` applies the change immediately without first relocating the caret, keeping the user anchored in their current typing context.
 - **Grouped edits**: Accepting applies all ranges in the group. To skip subsets, discard and request a narrower suggestion.
 - **Cursor placement**: If the applied edit leaves the caret inside the modified text, it stays there. When the next suggestion range is within three lines of the viewport, the editor automatically moves the caret forward; otherwise it waits for the user to press `Tab`, with the floating badge indicating the destination.
 
