@@ -3,14 +3,16 @@ type MonacoNamespace = typeof import('monaco-editor');
 import {
   type Command,
   type Disposable,
-  type EditSuggestion,
-  type EditSuggestionSession,
-  type EditSuggestionSessionChangeEvent,
-  EditTriggerKind,
+  EditSuggestionTriggerKind,
 } from '../api/index.js';
 import { registerPredictiveEditingDemo } from '../demo/mockExtension.js';
 import { loadMonaco } from '../monaco/monacoLoader.js';
 import type { editor as MonacoEditor } from 'monaco-editor';
+import type {
+  MonacoEditSuggestionSession,
+  MonacoEditSuggestionSessionChangeEvent,
+  RichEditSuggestion,
+} from '../monaco/monacoNextEditSuggestionService.js';
 
 type Monaco = Awaited<ReturnType<typeof loadMonaco>>;
 
@@ -88,20 +90,20 @@ function formatMarkdown(value: string): string {
 }
 
 function renderSuggestionFeed(
-  session: EditSuggestionSession | undefined,
-  event: EditSuggestionSessionChangeEvent | undefined,
+  session: MonacoEditSuggestionSession | undefined,
+  event: MonacoEditSuggestionSessionChangeEvent | undefined,
   listElement: HTMLOListElement,
   statusElement: HTMLElement,
   docElement: HTMLElement
 ): void {
-  const suggestions = event?.allSuggestions ?? session?.suggestions ?? [];
-  const active = event?.activeSuggestion ?? session?.activeSuggestion;
+  const suggestions = (event?.allSuggestions ?? session?.suggestions ?? []) as readonly RichEditSuggestion[];
+  const active = (event?.activeSuggestion ?? session?.activeSuggestion) as RichEditSuggestion | undefined;
 
   console.log('renderSuggestionFeed called with:', {
     hasSession: !!session,
     hasEvent: !!event,
     suggestionsCount: suggestions.length,
-    suggestions: suggestions.map((suggestion: EditSuggestion) => suggestion.label),
+    suggestions: suggestions.map((suggestion: RichEditSuggestion) => suggestion.label ?? suggestion.id),
   });
 
   if (!suggestions.length) {
@@ -116,8 +118,8 @@ function renderSuggestionFeed(
 
   const activeIndex = session?.activeIndex ?? (active ? suggestions.indexOf(active) : -1);
   const markup = suggestions
-    .map((suggestion: EditSuggestion, index: number) => {
-      const label = escapeHtml(suggestion.label);
+    .map((suggestion: RichEditSuggestion, index: number) => {
+      const label = escapeHtml(suggestion.label ?? suggestion.id);
       const detail = suggestion.detail ? `<span class="suggestion-detail">${escapeHtml(suggestion.detail)}</span>` : '';
       const commands = suggestion.commands && suggestion.commands.length
         ? `<span class="suggestion-commands">${suggestion.commands
@@ -269,7 +271,7 @@ export async function startDemoSite(): Promise<void> {
   const registration = registerPredictiveEditingDemo(editor);
   const service = registration.service;
 
-  function attachSession(session: EditSuggestionSession | undefined): void {
+  function attachSession(session: MonacoEditSuggestionSession | undefined): void {
     sessionSubscription?.dispose();
     sessionSubscription = undefined;
 
@@ -285,10 +287,16 @@ export async function startDemoSite(): Promise<void> {
     });
 
     // Render immediately with the session's current state
-    renderSuggestionFeed(session, { activeSuggestion: session.activeSuggestion, allSuggestions: session.suggestions }, suggestionList, suggestionStatus, suggestionDoc);
+      renderSuggestionFeed(
+        session,
+        { activeSuggestion: session.activeSuggestion, allSuggestions: session.suggestions },
+        suggestionList,
+        suggestionStatus,
+        suggestionDoc
+      );
     
     // Subscribe to changes for when suggestions are resolved (e.g., documentation is added)
-    sessionSubscription = session.onDidChange((sessionEvent: EditSuggestionSessionChangeEvent) => {
+    sessionSubscription = session.onDidChange((sessionEvent: MonacoEditSuggestionSessionChangeEvent) => {
       console.log('Session change event fired:', {
         suggestionsCount: sessionEvent.allSuggestions.length,
         activeSuggestion: sessionEvent.activeSuggestion?.label,
@@ -329,14 +337,14 @@ export async function startDemoSite(): Promise<void> {
     invokeButton?.addEventListener('click', async () => {
       suggestionStatus.textContent = 'Generating suggestions...';
       try {
-        const session = await service.invoke(EditTriggerKind.Invoke);
+        const session = await service.invoke(EditSuggestionTriggerKind.Invoke);
         console.log('Invoke result:', session ? `Session with ${session.suggestions.length} suggestions` : 'No session');
         if (!session) {
           suggestionStatus.textContent = 'No suggestions available for the current selection.';
           attachSession(undefined);
           return;
         }
-        console.log('Attaching session with suggestions:', session.suggestions.map((suggestion: EditSuggestion) => suggestion.label));
+        console.log('Attaching session with suggestions:', session.suggestions.map((suggestion: RichEditSuggestion) => suggestion.label ?? suggestion.id));
         attachSession(session);
         // Note: renderSuggestionFeed in attachSession already sets the status text
         // to show the count of suggestions, so we don't need to overwrite it here.

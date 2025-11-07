@@ -145,53 +145,25 @@ export interface DocumentFilter {
 export type ProviderResult<T> = T | undefined | null | Promise<T | undefined | null>;
 
 /**
- * Markdown-formatted content shown in suggestion documentation.
+ * Describes how the Next Edit Suggestion service was triggered.
  */
-export interface MarkdownString {
-  /**
-   * Markdown content to render.
-   */
-  readonly value: string;
-  /**
-   * When true, indicates the content may contain theme icon syntax (e.g. `$(zap)`).
-   */
-  readonly supportThemeIcons?: boolean;
-  /**
-   * When true, allows command URIs to be executed from the rendered content.
-   */
-  readonly isTrusted?: boolean;
+export const enum EditSuggestionTriggerKind {
+  Invoke = 0,
+  Automatic = 1,
 }
 
 /**
- * Controls how ghost text previews are rendered.
+ * Context information supplied when requesting next edit suggestions.
  */
-export interface GhostTextOptions {
+export interface EditSuggestionContext {
   /**
-   * CSS class applied to the inline ghost text decoration.
+   * Indicates whether the request was user-invoked or automatically triggered by heuristics.
    */
-  readonly inlineClassName?: string;
+  readonly triggerKind: EditSuggestionTriggerKind;
   /**
-   * Hint for the editor about the prominence of the ghost text styling.
+   * Identifier of the last suggestion accepted in the current session, if any.
    */
-  readonly style?: 'subtle' | 'strong' | 'default';
-  /**
-   * Optional foreground color override expressed as a CSS color.
-   */
-  readonly color?: string;
-}
-
-/**
- * Preview metadata rendered alongside a suggestion.
- */
-export interface EditSuggestionPreview {
-  /**
-   * Ranges that should be emphasized in the editor while the suggestion is focused.
-   */
-  readonly emphasisRanges?: readonly Range[];
-  /**
-   * Options that control the appearance of the inline ghost text.
-   */
-  readonly ghostTextOptions?: GhostTextOptions;
+  readonly lastAcceptedSuggestionId?: string;
 }
 
 /**
@@ -209,47 +181,6 @@ export interface TextEdit {
 }
 
 /**
- * Edit primitive used by the Next Edit Suggestions API.
- */
-export interface EditTextEdit {
-  /**
-   * Range of the edit.
-   */
-  readonly range: Range;
-  /**
-   * Text to insert at the given range.
-   */
-  readonly insertText: string;
-}
-
-/**
- * Describes how the Next Edit Suggestion service was triggered.
- */
-export const enum EditTriggerKind {
-  Invoke = 0,
-  Automatic = 1,
-}
-
-/**
- * Backwards-compatible alias for consumers using the earlier enum name.
- */
-export { EditTriggerKind as EditSuggestionTriggerKind };
-
-/**
- * Context information supplied when requesting next edit suggestions.
- */
-export interface EditSuggestionContext {
-  /**
-   * Indicates whether the request was user-invoked or automatically triggered by heuristics.
-   */
-  readonly triggerKind: EditTriggerKind;
-  /**
-   * Identifier of the last suggestion accepted in the current session, if any.
-   */
-  readonly lastAcceptedSuggestionId?: string;
-}
-
-/**
  * A suggested change produced by a provider, displayed as ghost text.
  */
 export interface EditSuggestion {
@@ -258,33 +189,9 @@ export interface EditSuggestion {
    */
   readonly id: string;
   /**
-   * Human-readable label surfaced in UI pickers and status areas.
-   */
-  readonly label: string;
-  /**
-   * Optional secondary detail text.
-   */
-  readonly detail?: string;
-  /**
-   * Rich documentation explaining the suggestion.
-   */
-  readonly documentation?: MarkdownString;
-  /**
    * One or more edits that apply the suggestion to the document.
    */
-  readonly edits: readonly EditTextEdit[];
-  /**
-   * Preview metadata used to highlight important ranges.
-   */
-  readonly preview?: EditSuggestionPreview;
-  /**
-   * Identifier describing the provider or model that produced the suggestion.
-   */
-  readonly source?: string;
-  /**
-   * Commands surfaced alongside the suggestion (for example, "Explain this suggestion").
-   */
-  readonly commands?: readonly Command[];
+  readonly edits: readonly TextEdit[];
 }
 
 /**
@@ -299,20 +206,6 @@ export interface EditSuggestionList {
    * When true, indicates more suggestions may become available if the request is reissued.
    */
   readonly isIncomplete?: boolean;
-  /**
-   * Optional telemetry payload forwarded to the host.
-   */
-  readonly telemetry?: Record<string, unknown>;
-}
-
-/**
- * Additional options supplied when registering a provider.
- */
-export interface EditRegistrationOptions {
-  /**
-   * When true, requests that the host capture document changes while a provider runs.
-   */
-  readonly captureDocumentChanges?: boolean;
 }
 
 /**
@@ -332,13 +225,6 @@ export interface EditSuggestionProvider {
     context: EditSuggestionContext,
     token: CancellationToken
   ): ProviderResult<EditSuggestionList>;
-  /**
-   * Optionally resolves additional information for a suggestion when it becomes active.
-   */
-  resolveEditSuggestion?(
-    suggestion: EditSuggestion,
-    token: CancellationToken
-  ): ProviderResult<EditSuggestion | undefined>;
 }
 
 /**
@@ -362,124 +248,6 @@ export interface EditSuggestionsDiscardedEvent {
 }
 
 /**
- * Event payload describing updates within an active suggestion session.
- */
-export interface EditSuggestionSessionChangeEvent {
-  /**
-   * The suggestion currently focused by the user, if any.
-   */
-  readonly activeSuggestion?: EditSuggestion;
-  /**
-   * Snapshot of all suggestions known to the session.
-   */
-  readonly allSuggestions: readonly EditSuggestion[];
-}
-
-/**
- * Represents an interactive suggestion session managed by the host.
- */
-export interface EditSuggestionSession {
-  /**
-   * Suggestions available in the session.
-   */
-  readonly suggestions: readonly EditSuggestion[];
-  /**
-   * The currently focused suggestion, if any.
-   */
-  readonly activeSuggestion?: EditSuggestion;
-  /**
-   * Zero-based index of the active suggestion.
-   */
-  readonly activeIndex: number;
-  /**
-   * Event fired when the session's active suggestion or suggestion list changes.
-   */
-  readonly onDidChange: Event<EditSuggestionSessionChangeEvent>;
-  /**
-   * Reveals the active suggestion in the editor.
-   */
-  reveal(): void;
-  /**
-   * Accepts the active suggestion (or a supplied one) and applies its edits.
-   */
-  accept(suggestion?: EditSuggestion): Promise<boolean>;
-  /**
-   * Discards the current session.
-   */
-  discard(): void;
-  /**
-   * Advances focus to the next suggestion.
-   */
-  selectNext(): void;
-  /**
-   * Moves focus to the previous suggestion.
-   */
-  selectPrevious(): void;
-  /**
-   * Sets the active suggestion to the provided index.
-   */
-  setActiveIndex(index: number): void;
-  /**
-   * Releases resources associated with the session.
-   */
-  dispose(): void;
-}
-
-/**
- * Entry point used by editors to register providers and drive suggestion sessions.
- */
-export interface EditSuggestionService {
-  /**
-   * Registers a provider for the given document selector and returns a disposable to unregister it.
-   */
-  registerProvider(
-    selector: DocumentSelector,
-    provider: EditSuggestionProvider,
-    options?: EditRegistrationOptions
-  ): Disposable;
-  /**
-   * Invokes providers using the current editor selection.
-   */
-  invoke(triggerKind?: EditTriggerKind): Promise<EditSuggestionSession | undefined>;
-  /**
-   * Returns the session currently shown to the user, if any.
-   */
-  getActiveSession(): EditSuggestionSession | undefined;
-  /**
-   * Accepts the active suggestion, if one exists.
-   */
-  acceptActiveSuggestion(): Promise<boolean>;
-  /**
-   * Discards the active session (if any) without applying edits.
-   */
-  discardActiveSuggestion(): void;
-  /**
-   * Selects the next suggestion in the active session.
-   */
-  selectNextSuggestion(): void;
-  /**
-   * Selects the previous suggestion in the active session.
-   */
-  selectPreviousSuggestion(): void;
-  /**
-   * Sets the active suggestion to the supplied index.
-   */
-  setActiveSuggestionIndex(index: number): void;
-  /**
-   * Optional event fired when a suggestion is accepted.
-   */
-  readonly onDidAcceptSuggestion?: Event<EditSuggestionAcceptedEvent>;
-  /**
-   * Optional event fired when suggestions are discarded without being accepted.
-   */
-  readonly onDidDiscardSuggestions?: Event<EditSuggestionsDiscardedEvent>;
-  /**
-   * Disposes the service and releases all associated resources.
-   */
-  dispose(): void;
-}
-
-/**
  * VS Code languages namespace for edit suggestion functionality.
  * This namespace provides registration functions and events for edit suggestions.
  */
@@ -487,16 +255,14 @@ export declare namespace vscode {
   export namespace languages {
     /**
      * Registers an edit suggestion provider for the given document selector.
-     *
+     * 
      * @param selector A document selector that defines the documents this provider is applicable to.
      * @param provider An edit suggestion provider.
-     * @param options Optional registration options supplied to the host.
      * @returns A disposable that unregisters this provider when disposed.
      */
     export function registerEditSuggestionProvider(
       selector: DocumentSelector,
-      provider: EditSuggestionProvider,
-      options?: EditRegistrationOptions
+      provider: EditSuggestionProvider
     ): Disposable;
 
     /**
@@ -510,3 +276,32 @@ export declare namespace vscode {
     export const onDidDiscardEditSuggestions: Event<EditSuggestionsDiscardedEvent>;
   }
 }
+
+/**
+ * Entry point used by editors to register providers and listen to suggestion events.
+ * All suggestion control (acceptance, navigation, dismissal) is managed by the host (editor).
+ * 
+ * @deprecated This interface is for internal use. Use `vscode.languages.registerEditSuggestionProvider()` instead.
+ */
+export interface EditSuggestionService {
+  /**
+   * Registers a provider for the given document selector and returns a disposable to unregister it.
+   */
+  registerProvider(
+    selector: DocumentSelector,
+    provider: EditSuggestionProvider
+  ): Disposable;
+  /**
+   * Event fired when a suggestion is accepted.
+   */
+  readonly onDidAcceptSuggestion: Event<EditSuggestionAcceptedEvent>;
+  /**
+   * Event fired when suggestions are discarded without being accepted.
+   */
+  readonly onDidDiscardSuggestions: Event<EditSuggestionsDiscardedEvent>;
+  /**
+   * Disposes the service and releases all associated resources.
+   */
+  dispose(): void;
+}
+

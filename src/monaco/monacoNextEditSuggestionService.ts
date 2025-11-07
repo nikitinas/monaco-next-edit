@@ -4,30 +4,80 @@ type Monaco = typeof import('monaco-editor');
 
 import {
   CancellationToken,
+  Command,
   DocumentSelector,
   DocumentFilter,
   Disposable,
   Event,
-  EditRegistrationOptions,
   EditSuggestion,
+  EditSuggestionAcceptedEvent,
   EditSuggestionContext,
   EditSuggestionProvider,
   EditSuggestionService,
-  EditSuggestionSession,
-  EditSuggestionSessionChangeEvent,
-  EditTextEdit,
-  EditTriggerKind,
+  EditSuggestionTriggerKind,
+  EditSuggestionsDiscardedEvent,
   Position,
   Selection,
   TextDocument,
+  TextEdit,
 } from '../api/index.js';
 
 type ProviderResult<T> = T | undefined | null | Promise<T | undefined | null>;
 
+export interface RichMarkdownString {
+  readonly value: string;
+  readonly supportThemeIcons?: boolean;
+  readonly isTrusted?: boolean;
+}
+
+export interface RichGhostTextOptions {
+  readonly inlineClassName?: string;
+  readonly style?: 'subtle' | 'strong' | 'default';
+  readonly color?: string;
+}
+
+export interface RichEditSuggestionPreview {
+  readonly emphasisRanges?: readonly Selection[];
+  readonly ghostTextOptions?: RichGhostTextOptions;
+}
+
+export interface RichEditSuggestion extends EditSuggestion {
+  readonly label?: string;
+  readonly detail?: string;
+  readonly documentation?: RichMarkdownString;
+  readonly preview?: RichEditSuggestionPreview;
+  readonly source?: string;
+  readonly commands?: readonly Command[];
+}
+
+export interface MonacoEditSuggestionSessionChangeEvent {
+  readonly activeSuggestion?: RichEditSuggestion;
+  readonly allSuggestions: readonly RichEditSuggestion[];
+}
+
+export interface MonacoEditSuggestionSession extends Disposable {
+  readonly suggestions: readonly RichEditSuggestion[];
+  readonly activeSuggestion?: RichEditSuggestion;
+  readonly activeIndex: number;
+  readonly onDidChange: Event<MonacoEditSuggestionSessionChangeEvent>;
+  reveal(): void;
+  accept(suggestion?: RichEditSuggestion): Promise<boolean>;
+  discard(): void;
+  selectNext(): void;
+  selectPrevious(): void;
+  setActiveIndex(index: number): void;
+}
+
+type RichEditSuggestionProvider = EditSuggestionProvider & {
+  resolveEditSuggestion?(
+    suggestion: EditSuggestion,
+    token: CancellationToken
+  ): ProviderResult<EditSuggestion | undefined>;
+};
+
 interface RegisteredProvider {
   readonly selector: DocumentSelector;
-  readonly provider: EditSuggestionProvider;
-  readonly options?: EditRegistrationOptions;
+  readonly provider: RichEditSuggestionProvider;
 }
 
 class Emitter<T> implements Disposable {
@@ -174,11 +224,11 @@ function documentMatchesSelector(document: TextDocument, selector: DocumentSelec
 function applyMonacoEdits(
   monaco: Monaco,
   editor: MonacoEditor.IStandaloneCodeEditor,
-  edits: readonly EditTextEdit[]
+  edits: readonly TextEdit[]
 ): void {
   const operations = edits.map<MonacoEditor.IIdentifiedSingleEditOperation>((edit) => ({
     range: toMonacoRange(monaco, edit.range),
-    text: edit.insertText,
+    text: edit.newText,
     forceMoveMarkers: true,
   }));
   editor.pushUndoStop();
@@ -188,16 +238,14 @@ function applyMonacoEdits(
 
 function previewDecorationsFromSuggestion(
   monaco: Monaco,
-  suggestion: EditSuggestion,
+  suggestion: RichEditSuggestion,
   editor: MonacoEditor.IStandaloneCodeEditor
 ): MonacoEditor.IModelDeltaDecoration[] {
   const decorations: MonacoEditor.IModelDeltaDecoration[] = [];
   const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
-  
-  console.log('[PreviewDecorations] Creating decorations for suggestion:', suggestion.label, 'with', suggestion.edits.length, 'edits');
-  console.log('[PreviewDecorations] Ghost class name:', ghostClassName);
 
-  console.log('[PreviewDecorations] Creating decorations for suggestion:', suggestion.label, 'with', suggestion.edits.length, 'edits');
+  const labelForLogging = suggestion.label ?? suggestion.id;
+  console.log('[PreviewDecorations] Creating decorations for suggestion:', labelForLogging, 'with', suggestion.edits.length, 'edits');
   console.log('[PreviewDecorations] Ghost class name:', ghostClassName);
 
   // Get the current selection/cursor position and model
@@ -215,7 +263,7 @@ function previewDecorationsFromSuggestion(
       });
     }
 
-    const lines = edit.insertText.split(/\r?\n/);
+    const lines = edit.newText.split(/\r?\n/);
     
     // Find the first non-empty line to show as ghost text
     let ghostTextContent = '';
@@ -344,33 +392,33 @@ class GhostTextContentWidget implements MonacoEditor.IContentWidget {
   }
 }
 
-class MonacoNextEditSuggestionSession implements EditSuggestionSession, Disposable {
-  private readonly changeEmitter = new Emitter<EditSuggestionSessionChangeEvent>();
+class MonacoNextEditSuggestionSession implements MonacoEditSuggestionSession {
+  private readonly changeEmitter = new Emitter<MonacoEditSuggestionSessionChangeEvent>();
   private decorationIds: string[] = [];
   private ghostTextWidget: GhostTextContentWidget | null = null;
   private disposed = false;
   private activeIndexValue = 0;
-  private readonly suggestionsInternal: EditSuggestion[];
+  private readonly suggestionsInternal: RichEditSuggestion[];
 
-  readonly onDidChange: Event<EditSuggestionSessionChangeEvent> = this.changeEmitter.event;
+  readonly onDidChange: Event<MonacoEditSuggestionSessionChangeEvent> = this.changeEmitter.event;
 
   constructor(
     private readonly editor: MonacoEditor.IStandaloneCodeEditor,
     private readonly monaco: Monaco,
-    suggestions: readonly EditSuggestion[],
-    private readonly onAccept: (suggestion: EditSuggestion) => Promise<boolean>,
+    suggestions: readonly RichEditSuggestion[],
+    private readonly onAccept: (suggestion: RichEditSuggestion) => Promise<boolean>,
     private readonly onDiscard: () => void,
-    private readonly onSelect: (index: number, suggestion: EditSuggestion) => void
+    private readonly onSelect: (index: number, suggestion: RichEditSuggestion) => void
   ) {
     this.suggestionsInternal = suggestions.map((s) => ({ ...s }));
     this.render();
   }
 
-  get suggestions(): readonly EditSuggestion[] {
+  get suggestions(): readonly RichEditSuggestion[] {
     return this.suggestionsInternal;
   }
 
-  get activeSuggestion(): EditSuggestion | undefined {
+  get activeSuggestion(): RichEditSuggestion | undefined {
     return this.suggestionsInternal[this.activeIndexValue];
   }
 
@@ -449,7 +497,7 @@ class MonacoNextEditSuggestionSession implements EditSuggestionSession, Disposab
     }
   }
 
-  updateSuggestion(index: number, suggestion: EditSuggestion): void {
+  updateSuggestion(index: number, suggestion: RichEditSuggestion): void {
     this.suggestionsInternal[index] = { ...suggestion };
     if (index === this.activeIndexValue) {
       this.render();
@@ -473,7 +521,7 @@ class MonacoNextEditSuggestionSession implements EditSuggestionSession, Disposab
       return;
     }
     
-    console.log('[Session Render] Rendering suggestion:', suggestion.label);
+    console.log('[Session Render] Rendering suggestion:', suggestion.label ?? suggestion.id);
     
     // Apply decorations for diff ranges and emphasis
     const decorations = previewDecorationsFromSuggestion(this.monaco, suggestion, this.editor);
@@ -491,8 +539,8 @@ class MonacoNextEditSuggestionSession implements EditSuggestionSession, Disposab
     let ghostTextLineOffset = 0; // How many lines after the edit range this content should appear
     const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
     
-    for (const edit of suggestion.edits) {
-      const lines = edit.insertText.split(/\r?\n/);
+      for (const edit of suggestion.edits) {
+        const lines = edit.newText.split(/\r?\n/);
       // Check if the first line is empty (starts with newline)
       const startsWithNewline = lines.length > 1 && lines[0].trim().length === 0;
       
@@ -587,13 +635,12 @@ class MonacoNextEditSuggestionSession implements EditSuggestionSession, Disposab
   }
 }
 
-export interface InvokeOptions {
-  readonly triggerKind?: EditTriggerKind;
-  readonly selectIndex?: number;
-}
-
 export class MonacoNextEditSuggestionService implements EditSuggestionService, Disposable {
   private readonly providers: RegisteredProvider[] = [];
+  private readonly acceptEmitter = new Emitter<EditSuggestionAcceptedEvent>();
+  readonly onDidAcceptSuggestion: Event<EditSuggestionAcceptedEvent> = this.acceptEmitter.event;
+  private readonly discardEmitter = new Emitter<EditSuggestionsDiscardedEvent>();
+  readonly onDidDiscardSuggestions: Event<EditSuggestionsDiscardedEvent> = this.discardEmitter.event;
   private activeSession: MonacoNextEditSuggestionSession | undefined;
   private pendingRequest: CancellationTokenSource | undefined;
   private lastAcceptedSuggestionId: string | undefined;
@@ -602,10 +649,9 @@ export class MonacoNextEditSuggestionService implements EditSuggestionService, D
 
   registerProvider(
     selector: DocumentSelector,
-    provider: EditSuggestionProvider,
-    options?: EditRegistrationOptions
+    provider: EditSuggestionProvider
   ): Disposable {
-    const entry: RegisteredProvider = { selector, provider, options };
+    const entry: RegisteredProvider = { selector, provider: provider as RichEditSuggestionProvider };
     this.providers.push(entry);
     return {
       dispose: () => {
@@ -617,7 +663,9 @@ export class MonacoNextEditSuggestionService implements EditSuggestionService, D
     };
   }
 
-  async invoke(triggerKind: EditTriggerKind = EditTriggerKind.Invoke): Promise<EditSuggestionSession | undefined> {
+  async invoke(
+    triggerKind: EditSuggestionTriggerKind = EditSuggestionTriggerKind.Invoke
+  ): Promise<MonacoEditSuggestionSession | undefined> {
     const model = this.editor.getModel();
     if (!model) {
       console.log('[Invoke] No model found');
@@ -652,8 +700,20 @@ export class MonacoNextEditSuggestionService implements EditSuggestionService, D
     };
 
     console.log('[Invoke] Calling provideEditSuggestions with:', { selection, context });
-    const result = await asPromise(provider.provider.provideEditSuggestions(document, selection, context, requestCts.token));
-    console.log('[Invoke] Provider returned:', result ? { suggestionsCount: result.suggestions.length, suggestions: result.suggestions.map(s => s.label) } : 'undefined');
+    const result = await asPromise(
+      provider.provider.provideEditSuggestions(document, selection, context, requestCts.token)
+    );
+    console.log(
+      '[Invoke] Provider returned:',
+      result
+        ? {
+            suggestionsCount: result.suggestions.length,
+            suggestions: result.suggestions.map((s) =>
+              'label' in s ? (s as RichEditSuggestion).label ?? s.id : s.id
+            ),
+          }
+        : 'undefined'
+    );
 
     if (requestCts !== this.pendingRequest || requestCts.token.isCancellationRequested) {
       console.log('[Invoke] Request was cancelled');
@@ -666,32 +726,39 @@ export class MonacoNextEditSuggestionService implements EditSuggestionService, D
     }
     console.log('[Invoke] Creating session with', result.suggestions.length, 'suggestions');
 
+    const suggestions = result.suggestions.map((suggestion) => ({ ...suggestion })) as RichEditSuggestion[];
+
     let sessionRef: MonacoNextEditSuggestionSession;
 
-    const handleSelect = async (index: number, suggestion: EditSuggestion) => {
-      if (!provider.provider.resolveEditSuggestion) {
+    const handleSelect = async (index: number, suggestion: RichEditSuggestion) => {
+      const resolver = provider.provider.resolveEditSuggestion;
+      if (!resolver) {
         return;
       }
-      const resolved = await asPromise(
-        provider.provider.resolveEditSuggestion(suggestion, requestCts.token)
-      );
+      const resolved = await asPromise(resolver.call(provider.provider, suggestion, requestCts.token));
       if (resolved && sessionRef) {
-        sessionRef.updateSuggestion(index, resolved);
+        const merged = { ...suggestion, ...resolved } as RichEditSuggestion;
+        sessionRef.updateSuggestion(index, merged);
       }
     };
 
     const session = new MonacoNextEditSuggestionSession(
       this.editor,
       this.monaco,
-      result.suggestions,
+      suggestions,
       async (suggestion) => {
         applyMonacoEdits(this.monaco, this.editor, suggestion.edits);
         this.lastAcceptedSuggestionId = suggestion.id;
+        this.acceptEmitter.fire({ suggestion });
         return true;
       },
       () => {
         if (this.activeSession === sessionRef) {
           this.activeSession = undefined;
+        }
+        const discarded = sessionRef?.suggestions ?? [];
+        if (discarded.length) {
+          this.discardEmitter.fire({ suggestions: discarded });
         }
       },
       handleSelect
@@ -709,7 +776,7 @@ export class MonacoNextEditSuggestionService implements EditSuggestionService, D
     return session;
   }
 
-  getActiveSession(): EditSuggestionSession | undefined {
+  getActiveSession(): MonacoEditSuggestionSession | undefined {
     return this.activeSession;
   }
 
