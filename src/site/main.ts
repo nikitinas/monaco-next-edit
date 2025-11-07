@@ -1,7 +1,9 @@
 type MonacoNamespace = typeof import('monaco-editor');
 
 import {
+  type Command,
   type Disposable,
+  type EditSuggestion,
   type EditSuggestionSession,
   type EditSuggestionSessionChangeEvent,
   EditTriggerKind,
@@ -99,7 +101,7 @@ function renderSuggestionFeed(
     hasSession: !!session,
     hasEvent: !!event,
     suggestionsCount: suggestions.length,
-    suggestions: suggestions.map(s => s.label)
+    suggestions: suggestions.map((suggestion: EditSuggestion) => suggestion.label),
   });
 
   if (!suggestions.length) {
@@ -114,12 +116,12 @@ function renderSuggestionFeed(
 
   const activeIndex = session?.activeIndex ?? (active ? suggestions.indexOf(active) : -1);
   const markup = suggestions
-    .map((suggestion, index) => {
+    .map((suggestion: EditSuggestion, index: number) => {
       const label = escapeHtml(suggestion.label);
       const detail = suggestion.detail ? `<span class="suggestion-detail">${escapeHtml(suggestion.detail)}</span>` : '';
       const commands = suggestion.commands && suggestion.commands.length
         ? `<span class="suggestion-commands">${suggestion.commands
-            .map((command) => escapeHtml(command.title))
+            .map((command: Command) => escapeHtml(command.title))
             .join(' ? ')}</span>`
         : '';
       const classes = ['suggestion-item'];
@@ -286,12 +288,12 @@ export async function startDemoSite(): Promise<void> {
     renderSuggestionFeed(session, { activeSuggestion: session.activeSuggestion, allSuggestions: session.suggestions }, suggestionList, suggestionStatus, suggestionDoc);
     
     // Subscribe to changes for when suggestions are resolved (e.g., documentation is added)
-    sessionSubscription = session.onDidChange((event) => {
+    sessionSubscription = session.onDidChange((sessionEvent: EditSuggestionSessionChangeEvent) => {
       console.log('Session change event fired:', {
-        suggestionsCount: event.allSuggestions.length,
-        activeSuggestion: event.activeSuggestion?.label
+        suggestionsCount: sessionEvent.allSuggestions.length,
+        activeSuggestion: sessionEvent.activeSuggestion?.label,
       });
-      renderSuggestionFeed(session, event, suggestionList, suggestionStatus, suggestionDoc);
+      renderSuggestionFeed(session, sessionEvent, suggestionList, suggestionStatus, suggestionDoc);
     });
   }
 
@@ -320,29 +322,29 @@ export async function startDemoSite(): Promise<void> {
     attachSession(undefined);
   }
 
-  populateButton?.addEventListener('click', () => {
-    loadSample(sampleIndex + 1);
-  });
+    populateButton?.addEventListener('click', () => {
+      loadSample(sampleIndex + 1);
+    });
 
-  invokeButton?.addEventListener('click', async () => {
-    suggestionStatus.textContent = 'Generating suggestions...';
-    try {
-      const session = await service.invoke(EditTriggerKind.Invoke);
-      console.log('Invoke result:', session ? `Session with ${session.suggestions.length} suggestions` : 'No session');
-      if (!session) {
-        suggestionStatus.textContent = 'No suggestions available for the current selection.';
-        attachSession(undefined);
-        return;
+    invokeButton?.addEventListener('click', async () => {
+      suggestionStatus.textContent = 'Generating suggestions...';
+      try {
+        const session = await service.invoke(EditTriggerKind.Invoke);
+        console.log('Invoke result:', session ? `Session with ${session.suggestions.length} suggestions` : 'No session');
+        if (!session) {
+          suggestionStatus.textContent = 'No suggestions available for the current selection.';
+          attachSession(undefined);
+          return;
+        }
+        console.log('Attaching session with suggestions:', session.suggestions.map((suggestion: EditSuggestion) => suggestion.label));
+        attachSession(session);
+        // Note: renderSuggestionFeed in attachSession already sets the status text
+        // to show the count of suggestions, so we don't need to overwrite it here.
+      } catch (error) {
+        console.error('Failed to invoke suggestions', error);
+        suggestionStatus.textContent = 'Something went wrong while generating suggestions.';
       }
-      console.log('Attaching session with suggestions:', session.suggestions.map(s => s.label));
-      attachSession(session);
-      // Note: renderSuggestionFeed in attachSession already sets the status text
-      // to show the count of suggestions, so we don't need to overwrite it here.
-    } catch (error) {
-      console.error('Failed to invoke suggestions', error);
-      suggestionStatus.textContent = 'Something went wrong while generating suggestions.';
-    }
-  });
+    });
 
   window.addEventListener('resize', () => editor.layout());
 

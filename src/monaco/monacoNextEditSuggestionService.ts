@@ -215,7 +215,7 @@ function previewDecorationsFromSuggestion(
       });
     }
 
-    const lines = edit.newText.split(/\r?\n/);
+    const lines = edit.insertText.split(/\r?\n/);
     
     // Find the first non-empty line to show as ghost text
     let ghostTextContent = '';
@@ -492,7 +492,7 @@ class MonacoNextEditSuggestionSession implements EditSuggestionSession, Disposab
     const ghostClassName = suggestion.preview?.ghostTextOptions?.inlineClassName ?? 'next-edit-ghost-text';
     
     for (const edit of suggestion.edits) {
-      const lines = edit.newText.split(/\r?\n/);
+      const lines = edit.insertText.split(/\r?\n/);
       // Check if the first line is empty (starts with newline)
       const startsWithNewline = lines.length > 1 && lines[0].trim().length === 0;
       
