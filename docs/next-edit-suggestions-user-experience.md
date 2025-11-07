@@ -18,6 +18,15 @@ This guide describes the Next Edit Suggestions feature from an editor user's per
 - **Visibility rules**: The widget only renders while a suggestion session is active, hides if you move the caret manually, and reappears when you return to the session’s anchor position.
 - **Focus states**: Hovering or keyboard focus emphasizes the badge so screen readers announce “Press Tab to preview next edit.”
 
+### Handling Groups of Similar Edits
+- **Batch previews**: The UI summarizes repetitive edits—such as whitespace or punctuation fixes across several lines—by showing one inline preview and a badge like “+3 similar edits.” Pressing `Tab` cycles through every occurrence so you can spot-check before acceptance.
+- **Line-count limit**: Suggestions may include at most five lines of changes (sum of insertions and deletions). If a provider returns more, the editor truncates the preview to the first five lines and presents a tooltip suggesting you rerun the provider with narrower scope.
+- **Acceptance granularity**: Accepting a summarized suggestion applies all grouped edits together. If you need finer control, discard and request targeted edits for the subset you want.
+
+### Post-Accept Cursor Behavior
+- **Automatic advance**: When the accepted edit leaves the caret inside the modified range (e.g., text inserted at the caret), the cursor remains at that location. If another edit from the same session is pending and sits within three lines of the current view, the editor automatically positions the cursor at the next edit to maintain flow.
+- **Manual confirmation**: If the next edit is outside the current viewport or belongs to a different file/language block, the editor keeps the caret at the end of the applied edit and waits for you to press `Tab` to navigate. The Tab widget floats to indicate where you’ll move next.
+
 ### Accepting Suggestions
 - **Single keystroke acceptance**: Pressing `Tab` from the original caret position applies the active suggestion in a single undo stop.
 - **Partial acceptance**: Not supported in the initial release—accepting applies every range previewed in the session. Discard (Escape) dismisses the entire suggestion.
