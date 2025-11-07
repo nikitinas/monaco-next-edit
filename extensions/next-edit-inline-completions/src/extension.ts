@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 const EXPLAIN_COMMAND = 'nextEditInlineCompletions.explainSuggestion';
 const TELEMETRY_COMMAND = 'nextEditInlineCompletions.generateTelemetry';
+const OUTPUT_CHANNEL_NAME = 'Next Edit Inline Completions';
 
 interface SuggestionMetadata {
   readonly id: string;
@@ -25,6 +26,11 @@ class NextEditInlineCompletionProvider implements vscode.InlineCompletionItemPro
   private lastAcceptedSuggestionId: string | undefined;
   private lastShownSuggestionId: string | undefined;
   private readonly suggestionMetadata = new Map<string, SuggestionMetadata>();
+  private readonly outputChannel: vscode.OutputChannel;
+
+  constructor(outputChannel: vscode.OutputChannel) {
+    this.outputChannel = outputChannel;
+  }
 
   async provideInlineCompletionItems(
     document: vscode.TextDocument,
@@ -32,7 +38,17 @@ class NextEditInlineCompletionProvider implements vscode.InlineCompletionItemPro
     context: vscode.InlineCompletionContext,
     token: vscode.CancellationToken
   ): Promise<vscode.InlineCompletionList | vscode.InlineCompletionItem[] | undefined> {
+    const timestamp = new Date().toISOString();
+    const fileName = document.fileName.split('/').pop() || document.fileName;
+    const lineInfo = `Line ${position.line + 1}, Column ${position.character + 1}`;
+    
+    this.outputChannel.appendLine(`[${timestamp}] provideInlineCompletionItems invoked`);
+    this.outputChannel.appendLine(`  File: ${fileName}`);
+    this.outputChannel.appendLine(`  Position: ${lineInfo}`);
+    this.outputChannel.appendLine(`  Context: ${context.triggerKind === vscode.InlineCompletionTriggerKind.Automatic ? 'Automatic' : 'Manual'}`);
+
     if (token.isCancellationRequested) {
+      this.outputChannel.appendLine('  Cancelled: token was already cancelled');
       return undefined;
     }
 
@@ -41,14 +57,17 @@ class NextEditInlineCompletionProvider implements vscode.InlineCompletionItemPro
     const loggingSuggestion = this.createLoggingSuggestion(position, indent);
     if (loggingSuggestion) {
       suggestions.push(loggingSuggestion);
+      this.outputChannel.appendLine(`  Created logging suggestion: ${loggingSuggestion.metadata.label}`);
     }
 
     const tryCatchSuggestion = this.createTryCatchSuggestion(document, position, indent);
     if (tryCatchSuggestion) {
       suggestions.push(tryCatchSuggestion);
+      this.outputChannel.appendLine(`  Created try/catch suggestion: ${tryCatchSuggestion.metadata.label}`);
     }
 
     if (suggestions.length === 0) {
+      this.outputChannel.appendLine('  No suggestions generated');
       return undefined;
     }
 
@@ -63,21 +82,27 @@ class NextEditInlineCompletionProvider implements vscode.InlineCompletionItemPro
       if (acceptedIndex >= 0) {
         const [accepted] = suggestions.splice(acceptedIndex, 1);
         suggestions.push(accepted);
+        this.outputChannel.appendLine(`  Prioritized previously accepted suggestion: ${accepted.metadata.id}`);
       }
     }
 
+    this.outputChannel.appendLine(`  Returning ${suggestions.length} suggestion(s)`);
     return new vscode.InlineCompletionList(suggestions);
   }
 
   handleDidShowCompletionItem(completionItem: vscode.InlineCompletionItem): void {
     if (completionItem instanceof NextEditInlineCompletionItem) {
       this.lastShownSuggestionId = completionItem.metadata.id;
+      const timestamp = new Date().toISOString();
+      this.outputChannel.appendLine(`[${timestamp}] Suggestion shown: ${completionItem.metadata.id} - ${completionItem.metadata.label}`);
     }
   }
 
   handleDidAcceptCompletionItem(completionItem: vscode.InlineCompletionItem): void {
     if (completionItem instanceof NextEditInlineCompletionItem) {
       this.lastAcceptedSuggestionId = completionItem.metadata.id;
+      const timestamp = new Date().toISOString();
+      this.outputChannel.appendLine(`[${timestamp}] Suggestion accepted: ${completionItem.metadata.id} - ${completionItem.metadata.label}`);
     }
   }
 
@@ -210,21 +235,58 @@ class NextEditInlineCompletionProvider implements vscode.InlineCompletionItemPro
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new NextEditInlineCompletionProvider();
+  try {
+    console.log('[Next Edit] Extension activation started');
+    const outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    outputChannel.appendLine('Next Edit Inline Completions extension activated');
+    outputChannel.appendLine(`Activation time: ${new Date().toISOString()}`);
+    outputChannel.show(true); // Show the output channel automatically
+    console.log('[Next Edit] Output channel created and shown');
 
-  context.subscriptions.push(
-    vscode.languages.registerInlineCompletionItemProvider({ pattern: '**/*' }, provider)
-  );
+    const provider = new NextEditInlineCompletionProvider(outputChannel);
+    console.log('[Next Edit] Provider created');
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand(EXPLAIN_COMMAND, (id?: string) => provider.explainSuggestion(id))
-  );
+    context.subscriptions.push(outputChannel);
+    context.subscriptions.push(
+      vscode.languages.registerInlineCompletionItemProvider({ pattern: '**/*' }, provider)
+    );
+    outputChannel.appendLine('Inline completion provider registered for all file patterns (**/*)');
+    console.log('[Next Edit] Inline completion provider registered');
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand(TELEMETRY_COMMAND, (id?: string) => provider.generateTelemetry(id))
-  );
+    context.subscriptions.push(
+      vscode.commands.registerCommand(EXPLAIN_COMMAND, (id?: string) => {
+        outputChannel.appendLine(`[${new Date().toISOString()}] Command invoked: ${EXPLAIN_COMMAND}`);
+        provider.explainSuggestion(id);
+      })
+    );
+    outputChannel.appendLine(`Command registered: ${EXPLAIN_COMMAND}`);
+    console.log(`[Next Edit] Command registered: ${EXPLAIN_COMMAND}`);
+
+    context.subscriptions.push(
+      vscode.commands.registerCommand(TELEMETRY_COMMAND, (id?: string) => {
+        outputChannel.appendLine(`[${new Date().toISOString()}] Command invoked: ${TELEMETRY_COMMAND}`);
+        provider.generateTelemetry(id);
+      })
+    );
+    outputChannel.appendLine(`Command registered: ${TELEMETRY_COMMAND}`);
+    outputChannel.appendLine('Extension setup complete');
+    console.log(`[Next Edit] Command registered: ${TELEMETRY_COMMAND}`);
+    console.log('[Next Edit] Extension activation complete');
+    
+    // Show a notification to confirm activation
+    void vscode.window.showInformationMessage('Next Edit Inline Completions extension activated!', 'Open Output').then(selection => {
+      if (selection === 'Open Output') {
+        outputChannel.show();
+      }
+    });
+  } catch (error) {
+    console.error('[Next Edit] Activation error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    vscode.window.showErrorMessage(`Next Edit extension activation failed: ${errorMessage}`);
+  }
 }
 
 export function deactivate(): void {
-  // No-op: VS Code disposes registered subscriptions automatically.
+  // VS Code disposes registered subscriptions automatically.
+  // Output channel will be disposed as part of the subscription.
 }
