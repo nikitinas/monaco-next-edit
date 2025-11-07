@@ -1,46 +1,37 @@
 ## Next Edit Suggestions – User Experience
 
-This guide describes the Next Edit Suggestions feature from an editor user's perspective: how suggestions surface, how keyboard navigation works, and how various edit shapes are visualized before acceptance.
+This guide describes the Next Edit Suggestions experience from a user’s point of view: when suggestions appear, how to preview them, and what to expect when applying changes.
 
-### When Suggestions Appear
-- **Manual trigger**: Running the `Predict Next Edit` command (or its bound shortcut) asks the active provider for suggestions scoped to the current cursor selection.
-- **Automatic follow-up**: After a suggestion is accepted, the editor may automatically request another prediction to keep momentum; providers decide whether to respond based on context.
-- **Session lifetime**: A visible suggestion session stays active until you accept, discard, or type through the preview. Typing outside the suggested ranges cancels the preview and the session.
-- **Idle invocation**: When the editor detects you have been idle for a configurable delay (default 1.5 s) and the caret sits in a context where a previous suggestion was accepted, it silently queries providers again. A subtle pulse on the Tab widget announces the new suggestion without stealing focus.
+### Suggestion Lifecycle
+- **Manual trigger**: Run `Predict Next Edit` (command or shortcut) to request suggestions for the current selection or caret position.
+- **Idle invocation**: After roughly 1.5 s of inactivity in an area where a prior suggestion was accepted, the editor re-queries providers. A subtle pulse on the Tab badge indicates fresh suggestions without stealing focus.
+- **Automatic follow-up**: Accepting a suggestion can prompt an immediate re-request so you can stay in flow; providers decide whether to provide follow-up edits.
+- **Session lifetime**: A session stays active until you accept, discard, or type through any previewed range. Moving the caret outside the session cancels the preview.
+- **Scope limit**: Each suggestion may include at most five lines of edits (combined insertions and deletions). Over-limit edits are truncated with guidance to refine the request.
 
-### Navigating with Tab
-- **Focus transfer**: Pressing `Tab` while a suggestion session is active moves the caret to the first edit in the active suggestion, letting you inspect the proposed change in place.
-- **Cycling edits**: Continued `Tab` presses walk the caret through every range the suggestion will touch (insertions, replacements, deletions). Shift+Tab walks backwards.
-- **Exit behavior**: Leaving the last range brings the caret back to its starting position so you can continue typing without applying the edit.
+### Previewing and Navigating
+- **Tab traversal**: Press `Tab` to jump into the first edit range of the active suggestion; `Shift+Tab` walks backward. Each press advances to the next range so you can inspect insertions, replacements, or deletions in context.
+- **Return to origin**: Leaving the final range returns the caret to its starting position so you can resume typing without applying the suggestion.
+- **Grouped edits**: Repetitive changes (e.g., whitespace fixes) appear as a single inline preview with a “+N similar edits” badge. Tab cycling visits every occurrence before acceptance.
 
-### Tab Navigation Widget
-- **Inline badge**: A pill-shaped `Tab` badge appears at the right edge of the current line whenever the active suggestion has an edit at the caret position. Its presence signals that pressing `Tab` will jump into a previewed edit.
-- **Viewport jump hints**: When the next edit range falls above or below the visible viewport, the badge detaches and floats near the top or bottom edge of the editor with an arrow indicating the direction of travel. Pressing `Tab` scrolls the editor to reveal that range and places the caret there.
-- **Visibility rules**: The widget only renders while a suggestion session is active, hides if you move the caret manually, and reappears when you return to the session’s anchor position.
-- **Focus states**: Hovering or keyboard focus emphasizes the badge so screen readers announce “Press Tab to preview next edit.”
+### Tab Widget Behavior
+- **Inline badge**: While the caret sits on a range covered by the active suggestion, a pill-shaped `Tab` badge appears at the end of the line, signaling that Tab will move the caret into the preview.
+- **Viewport hints**: If the next range sits above or below the visible area, the badge floats near the viewport edge with an arrow pointing toward the offscreen edit. Pressing `Tab` scrolls and positions the caret there.
+- **Visibility rules**: The badge only shows during an active session, hides when you manually move the caret, and reappears when you return to the session anchor. Hover and keyboard focus amplify the badge so assistive tech announces “Press Tab to preview next edit.”
 
-### Handling Groups of Similar Edits
-- **Batch previews**: The UI summarizes repetitive edits—such as whitespace or punctuation fixes across several lines—by showing one inline preview and a badge like “+3 similar edits.” Pressing `Tab` cycles through every occurrence so you can spot-check before acceptance.
-- **Line-count limit**: Suggestions may include at most five lines of changes (sum of insertions and deletions). If a provider returns more, the editor truncates the preview to the first five lines and presents a tooltip suggesting you rerun the provider with narrower scope.
-- **Acceptance granularity**: Accepting a summarized suggestion applies all grouped edits together. If you need finer control, discard and request targeted edits for the subset you want.
+### Accepting and Post-Accept Flow
+- **Single-step acceptance**: Press `Tab` from the original caret position to apply the active suggestion in a single undo stop. Escape discards the session; partial acceptance is not supported.
+- **Grouped edits**: Accepting applies all ranges in the group. To skip subsets, discard and request a narrower suggestion.
+- **Cursor placement**: If the applied edit leaves the caret inside the modified text, it stays there. When the next suggestion range is within three lines of the viewport, the editor automatically moves the caret forward; otherwise it waits for you to press `Tab`, with the floating badge indicating the destination.
 
-### Post-Accept Cursor Behavior
-- **Automatic advance**: When the accepted edit leaves the caret inside the modified range (e.g., text inserted at the caret), the cursor remains at that location. If another edit from the same session is pending and sits within three lines of the current view, the editor automatically positions the cursor at the next edit to maintain flow.
-- **Manual confirmation**: If the next edit is outside the current viewport or belongs to a different file/language block, the editor keeps the caret at the end of the applied edit and waits for you to press `Tab` to navigate. The Tab widget floats to indicate where you’ll move next.
+### Visual Treatment of Edits
+- **Word or token replacement**: Dimmed inline ghost text shows the proposed replacement ahead of the caret for direct comparison.
+- **Single-line changes**: Entire lines display a muted diff—deleted text struck through, inserted text shown as ghost text—with a subtle gutter marker.
+- **Multiline blocks**: Added lines appear with a faint background, removed sections collapse into a placeholder with a badge showing the number of deleted lines.
+- **Insertions**: Ghost text renders at the insertion point with a scaffold caret; multi-range insertions connect via a faint guide line.
+- **Deletions**: Removed spans display translucent strike-through styling, and Tab traversal pauses on each deletion for review.
 
-### Accepting Suggestions
-- **Single keystroke acceptance**: Pressing `Tab` from the original caret position applies the active suggestion in a single undo stop.
-- **Partial acceptance**: Not supported in the initial release—accepting applies every range previewed in the session. Discard (Escape) dismisses the entire suggestion.
-- **Post-accept workflow**: After acceptance, the preview clears, the caret moves to the location where the edit leaves focus, and automatic follow-up (if enabled) can surface the next suggestion.
-
-### Visualizing Different Edit Shapes
-- **Single word replacement**: Inline ghost text overlays the word in a dimmed style with the replacement text shown ahead of the caret so you can compare both versions before applying.
-- **Single line replacement**: The full line shows a muted diff—deleted text strikes through, and inserted text appears as ghost text aligned in place. Line gutters display a subtle change marker.
-- **Multiline replacement**: Blocks wrap in a diff-style preview. Added lines use ghost text with faint background; removed lines appear collapsed with an inline badge indicating the count of lines that will be deleted.
-- **Insertions**: Ghost text appears at the insertion point with a scaffolding caret to show where the text will land. A faint connector line links multi-range insertions.
-- **Deletions**: Removed segments receive a translucent strike-through. The gutter shows a removal indicator, and the caret pauses on each deletion when tab-cycling ranges.
-
-### Summary of Keyboard Shortcuts
-- `Tab`: Jump to the next edit range or accept when invoked from the original caret position.
-- `Shift+Tab`: Jump to the previous edit range.
-- `Escape`: Discard the current suggestion session.
+### Keyboard Reference
+- `Tab`: Preview the next range or accept when pressed from the origin.
+- `Shift+Tab`: Move to the previous range in the session.
+- `Escape`: Dismiss the current suggestion session.
