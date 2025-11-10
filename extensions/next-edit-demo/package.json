@@ -1,7 +1,7 @@
 {
   "name": "next-edit-demo",
   "displayName": "Next Edit Suggestions Demo",
-  "description": "Simple demo extension showing next edit suggestions at positions other than cursor",
+  "description": "Command-based extension for generating next edit suggestions using inline completions API",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.99.0"
@@ -25,38 +25,5 @@
     "@types/vscode": "^1.74.0",
     "@types/node": "^18.0.0",
     "typescript": "^5.0.0"
-  },
-  "contributes": {
-    "commands": [
-      {
-        "command": "nextEditDemo.trigger",
-        "title": "Demo: Trigger Next Edit Suggestions"
-      },
-      {
-        "command": "nextEditDemo.insertSuggestion",
-        "title": "Demo: Insert Suggestion (Next Line)",
-        "category": "Next Edit Demo"
-      },
-      {
-        "command": "nextEditDemo.modifySuggestion",
-        "title": "Demo: Modify Suggestion (Same Line)",
-        "category": "Next Edit Demo"
-      },
-      {
-        "command": "nextEditDemo.deleteSuggestion",
-        "title": "Demo: Delete Suggestion (Current Line)",
-        "category": "Next Edit Demo"
-      },
-      {
-        "command": "nextEditDemo.remoteSuggestion",
-        "title": "Demo: Remote Suggestion (Different Line)",
-        "category": "Next Edit Demo"
-      },
-      {
-        "command": "nextEditDemo.modifyTwoLinesAfter",
-        "title": "Demo: Modify Suggestion (2 Lines After)",
-        "category": "Next Edit Demo"
-      }
-    ]
   }
 }
