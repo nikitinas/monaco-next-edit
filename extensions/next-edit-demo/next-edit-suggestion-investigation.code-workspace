@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"path": "../../../vscode"
+		},
+		{
+			"path": "../../../vscode-copilot-chat"
+		},
+		{
+			"path": "../../../vscode2"
+		}
+	],
+	"settings": {}
+}
