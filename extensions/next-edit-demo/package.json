@@ -1,7 +1,7 @@
 {
-  "name": "next-edit-demo",
-  "displayName": "Next Edit Suggestions Demo",
-  "description": "Command-based extension for generating next edit suggestions using inline completions API",
+  "name": "inline-completions-demo",
+  "displayName": "Inline Completions Demo",
+  "description": "Command-based extension for generating inline completion suggestions using VS Code's inline completions API",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.99.0"
@@ -25,5 +25,14 @@
     "@types/vscode": "^1.74.0",
     "@types/node": "^18.0.0",
     "typescript": "^5.0.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "inlineCompletionsDemo.insertSampleCommands",
+        "title": "Insert Sample Commands",
+        "category": "Inline Completions"
+      }
+    ]
   }
 }

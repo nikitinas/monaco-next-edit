@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 // TypeScript automatically picks them up - no runtime import needed
 
 /**
- * Demo extension that provides "next edit" suggestions using VS Code's InlineCompletionItemProvider API.
+ * Demo extension that provides inline completion suggestions using VS Code's InlineCompletionItemProvider API.
  * 
  * This extension parses commands from the current line and generates inline completion suggestions.
  * Supported commands:
@@ -13,11 +13,11 @@ import * as vscode from 'vscode';
  * - delete <line>-<line>:<column>
  */
 export function activate(context: vscode.ExtensionContext) {
-    console.log('Next Edit Demo extension is now active!');
+    console.log('Inline Completions Demo extension is now active!');
 
     // Create output channel for debugging
-    const outputChannel = vscode.window.createOutputChannel('Next Edit Demo');
-    outputChannel.appendLine('Next Edit Demo extension activated');
+    const outputChannel = vscode.window.createOutputChannel('Inline Completions Demo');
+    outputChannel.appendLine('Inline Completions Demo extension activated');
     outputChannel.show(true); // Show output channel automatically
 
     // Check and log VS Code settings for inline completions
@@ -27,20 +27,20 @@ export function activate(context: vscode.ExtensionContext) {
     
     outputChannel.appendLine(`VS Code Settings:`);
     outputChannel.appendLine(`  editor.inlineSuggest.enabled: ${inlineSuggestEnabled}`);
-    outputChannel.appendLine(`  editor.inlineSuggest.edits.enabled: ${inlineSuggestEditsEnabled} ⚠️ CRITICAL FOR NEXT-EDIT SUGGESTIONS`);
+    outputChannel.appendLine(`  editor.inlineSuggest.edits.enabled: ${inlineSuggestEditsEnabled} ⚠️ CRITICAL FOR INLINE COMPLETION SUGGESTIONS`);
     
     if (!inlineSuggestEnabled) {
         outputChannel.appendLine(`  ⚠️  WARNING: Inline suggestions are disabled! Enable with: editor.inlineSuggest.enabled = true`);
         vscode.window.showWarningMessage(
-            'Next Edit Demo: Inline suggestions are disabled. Enable "editor.inlineSuggest.enabled" in settings.'
+            'Inline Completions Demo: Inline suggestions are disabled. Enable "editor.inlineSuggest.enabled" in settings.'
         );
     }
     
     if (!inlineSuggestEditsEnabled) {
-        outputChannel.appendLine(`  ❌ CRITICAL: Inline edits are disabled! Next-edit suggestions will NOT work!`);
+        outputChannel.appendLine(`  ❌ CRITICAL: Inline edits are disabled! Inline completion suggestions will NOT work!`);
         outputChannel.appendLine(`  To enable: Set "editor.inlineSuggest.edits.enabled": true in settings.json`);
         vscode.window.showErrorMessage(
-            'Next Edit Demo: Inline edits are disabled. Enable "editor.inlineSuggest.edits.enabled" in settings for next-edit suggestions to work!'
+            'Inline Completions Demo: Inline edits are disabled. Enable "editor.inlineSuggest.edits.enabled" in settings for inline completion suggestions to work!'
         );
     }
 
@@ -53,9 +53,15 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(disposable, outputChannel);
 
+    // Register command to insert sample commands
+    const insertSampleCommandsCommand = vscode.commands.registerCommand('inlineCompletionsDemo.insertSampleCommands', () => {
+        insertSampleCommands(outputChannel);
+    });
+    context.subscriptions.push(insertSampleCommandsCommand);
+
     outputChannel.appendLine('Extension setup complete');
     outputChannel.appendLine('');
-    outputChannel.appendLine('✅ Command-based Next-Edit Suggestions');
+    outputChannel.appendLine('✅ Command-based Inline Completion Suggestions');
     outputChannel.appendLine('Supported commands:');
     outputChannel.appendLine('  - insert <text> at <line>:<column>');
     outputChannel.appendLine('  - replace "<src>" with "<dst>" [at|in] <line>-<line>');
@@ -70,6 +76,77 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
     // Cleanup if needed
+}
+
+/**
+ * Inserts sample commands at the current cursor position to help users learn the syntax.
+ */
+async function insertSampleCommands(outputChannel: vscode.OutputChannel): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        vscode.window.showErrorMessage('No active editor');
+        return;
+    }
+
+    const position = editor.selection.active;
+    const eol = editor.document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+    
+    const sampleCommands = [
+        '// Inline Completions Demo - Sample Commands',
+        '// Type these commands and press TAB to see suggestions',
+        '',
+        '// INSERT COMMANDS',
+        '// Insert text at a specific position',
+        'insert "Hello World" at 5:10',
+        'insert lala at 12:3',
+        '',
+        '// REPLACE COMMANDS',
+        '// Replace first occurrence (default)',
+        'replace "var" with "const" at 1-10',
+        'replace "str" with "string" in 12-15',
+        '',
+        '// Replace all occurrences',
+        'replace all "==" with "===" at 1-20',
+        'replace all "old" with "new" in 5-15',
+        '',
+        '// Replace first N occurrences',
+        'replace 2 "debug" with "info" at 1-10',
+        'replace 3 "temp" with "result" in 5-20',
+        '',
+        '// DELETE COMMANDS',
+        '// Delete with text and line range (first occurrence)',
+        'delete "console.log" at 1-10',
+        'delete "TODO" in 5-15',
+        '',
+        '// Delete all occurrences',
+        'delete all " " at 1-20',
+        'delete all "debug" in 5-15',
+        '',
+        '// Delete first N occurrences',
+        'delete 2 "old" at 1-10',
+        'delete 3 "temp" in 5-20',
+        '',
+        '// Delete with text and column range',
+        'delete " " at 14:2-16',
+        'delete all "x" in 5:0-50',
+        '',
+        '// Delete by position (without text)',
+        'delete 12-13:4',
+        '',
+        '// Note: Commands are case-insensitive',
+        '// You can use "at" or "in" interchangeably',
+        '// Line numbers are 1-based (as shown in editor)',
+        '// Column numbers are 0-based (first character is column 0)'
+    ];
+
+    const textToInsert = sampleCommands.join(eol) + eol;
+
+    await editor.edit(editBuilder => {
+        editBuilder.insert(position, textToInsert);
+    });
+
+    outputChannel.appendLine('Sample commands inserted at cursor position');
+    vscode.window.showInformationMessage('Sample commands inserted! Type any command and press TAB to see suggestions.');
 }
 
 /**

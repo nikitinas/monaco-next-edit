@@ -1,6 +1,6 @@
-# Next Edit Demo Extension
+# Inline Completions Demo Extension
 
-A VS Code extension that provides "next edit" suggestions using a command-based language. Type commands in your editor to generate inline completion suggestions that can be applied at positions other than the cursor.
+A VS Code extension that provides inline completion suggestions using a command-based language. Type commands in your editor to generate inline completion suggestions that can be applied at positions other than the cursor.
 
 ## Overview
 
@@ -155,6 +155,18 @@ delete 12-13:4
 - Processes matches according to the count specification
 - Creates a combined edit if multiple matches are processed
 
+## Quick Start
+
+### Insert Sample Commands
+
+To quickly learn the command syntax, use the built-in command to insert sample commands:
+
+1. Open Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+2. Type "Insert Sample Commands" and select **Inline Completions: Insert Sample Commands**
+3. Sample commands will be inserted at your cursor position
+4. Review the examples and try typing any command
+5. Press **TAB** to accept suggestions
+
 ## Usage
 
 1. Open any file in VS Code
@@ -170,9 +182,9 @@ delete 12-13:4
 
 ## Output Channel
 
-The extension logs all activity to the "Next Edit Demo" output channel. Open it via:
+The extension logs all activity to the "Inline Completions Demo" output channel. Open it via:
 
-- View → Output → Select "Next Edit Demo" from the dropdown
+- View → Output → Select "Inline Completions Demo" from the dropdown
 
 The output channel shows:
 
@@ -199,7 +211,7 @@ The output channel shows:
 
 3. **Check the output channel:**
 
-   - View → Output → "Next Edit Demo"
+   - View → Output → "Inline Completions Demo"
    - Look for error messages or warnings
 
 4. **Verify command syntax:**
@@ -239,7 +251,7 @@ The output channel shows:
 
 The extension uses VS Code's `InlineCompletionItemProvider` API with the **inlineCompletionsAdditions** API (stabilized in VS Code 1.99+). Key properties:
 
-- **`isInlineEdit: true`** - Marks the suggestion as a next-edit suggestion
+- **`isInlineEdit: true`** - Marks the suggestion as an inline edit suggestion
 - **`showRange`** - Allows display when cursor is within 4 lines of the edit
 - **`displayLocation`** - Visual indicator showing where the edit will be applied
 

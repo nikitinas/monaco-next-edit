@@ -11,6 +11,7 @@
 3. Make sure it's **checked/enabled**
 
 Or add to your `settings.json`:
+
 ```json
 {
   "editor.inlineSuggest.edits.enabled": true
@@ -20,25 +21,28 @@ Or add to your `settings.json`:
 ### Why This Matters
 
 VS Code determines `context.includeInlineEdits` based on this setting:
+
 - `editor.inlineSuggest.edits.enabled: true` → `context.includeInlineEdits = true` → VS Code requests inline edits
 - `editor.inlineSuggest.edits.enabled: false` → `context.includeInlineEdits = false` → VS Code **skips** inline edits
 
 **Location in VS Code source**: `src/vs/editor/contrib/inlineCompletions/browser/model/inlineCompletionsModel.ts:128`
+
 ```typescript
-this._inlineEditsEnabled = inlineSuggest.map(v => !!v.edits.enabled);
+this._inlineEditsEnabled = inlineSuggest.map((v) => !!v.edits.enabled);
 ```
 
 And then at line 404:
+
 ```typescript
 includeInlineEdits: this._inlineEditsEnabled.read(reader),
 ```
 
 ## Check the Logs
 
-After adding the logging for `context.includeInlineEdits`, check the "Next Edit Demo" output channel:
+After adding the logging for `context.includeInlineEdits`, check the "Inline Completions Demo" output channel:
 
 1. Open Output panel (View → Output)
-2. Select "Next Edit Demo" from the dropdown
+2. Select "Inline Completions Demo" from the dropdown
 3. Look for: `⚠️  Context.includeInlineEdits: true/false`
 
 If it shows `false`, that's the problem!
@@ -70,6 +74,7 @@ Make sure the provider is registered correctly. Check the extension activation l
 ## Testing Steps
 
 1. **Enable the setting**:
+
    ```json
    "editor.inlineSuggest.edits.enabled": true
    ```
@@ -77,11 +82,13 @@ Make sure the provider is registered correctly. Check the extension activation l
 2. **Reload the Extension Development Host** (F5)
 
 3. **Open a new file** and type:
+
    ```javascript
    function test() {
    ```
 
-4. **Check the logs** in "Next Edit Demo" output channel:
+4. **Check the logs** in "Inline Completions Demo" output channel:
+
    - Should see `Context.includeInlineEdits: true`
    - Should see suggestions being created
    - Should see `✅ Created next-line suggestion`
@@ -96,7 +103,5 @@ Make sure the provider is registered correctly. Check the extension activation l
 2. Verify `context.includeInlineEdits` is `true`
 3. Verify suggestions are being created (check logs)
 4. Check if any regular inline completions are visible
-5. Try the demo commands instead of typing:
-   - `Next Edit Demo: Insert Suggestion (Next Line)`
-
-
+5. Try the sample commands command:
+   - `Inline Completions: Insert Sample Commands`
