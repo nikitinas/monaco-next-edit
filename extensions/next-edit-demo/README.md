@@ -75,7 +75,7 @@ Replaces occurrences of source text with destination text within a line range.
 **Syntax:**
 
 ```
-replace [all|<N>] "<src>" with "<dst>" [at|in] <startLine>-<endLine>
+replace [all|<N>] "<src>" with "<dst>" [at|in] <line>[-<endLine>]
 ```
 
 **Parameters:**
@@ -87,12 +87,15 @@ replace [all|<N>] "<src>" with "<dst>" [at|in] <startLine>-<endLine>
 - `"<src>"` - Source text to find (must be quoted)
 - `"<dst>"` - Destination text to replace with (must be quoted)
 - `[at|in]` - Optional keyword (can use either `at` or `in`)
-- `<startLine>-<endLine>` - Line range to search in (1-based)
+- `<line>[-<endLine>]` - Line number or range to search in (1-based):
+  - Single line: `<line>` (e.g., `14`)
+  - Line range: `<startLine>-<endLine>` (e.g., `12-15`)
 
 **Examples:**
 
 ```
 replace "str" with "string" at 12-15
+replace "a" with "b" at 14
 replace all "var" with "const" in 1-10
 replace 2 "==" with "===" at 5-8
 replace "old" with "new" in 20-25
@@ -119,7 +122,7 @@ delete [all|<N>] "<text>" [at|in] <line>:<startColumn>-<endColumn>
 **3b. Delete with text and line range:**
 
 ```
-delete [all|<N>] "<text>" [at|in] <startLine>-<endLine>
+delete [all|<N>] "<text>" [at|in] <line>[-<endLine>]
 ```
 
 **3c. Delete without text (by position):**
@@ -135,7 +138,9 @@ delete <startLine>-<endLine>:<column>
 - `[at|in]` - Optional keyword (can use either `at` or `in`)
 - `<line>` - Target line number (1-based)
 - `<startColumn>-<endColumn>` - Column range to search within (0-based)
-- `<startLine>-<endLine>` - Line range to search in (1-based)
+- `<line>[-<endLine>]` - Line number or range to search in (1-based):
+  - Single line: `<line>` (e.g., `14`)
+  - Line range: `<startLine>-<endLine>` (e.g., `5-10`)
 - `<column>` - Column position to delete character at (0-based)
 
 **Examples:**
@@ -143,6 +148,7 @@ delete <startLine>-<endLine>:<column>
 ```
 delete " " at 14:2-16
 delete "console.log" in 5-10
+delete "text" at 14
 delete all "TODO" at 1-20
 delete 2 "debug" in 10-15
 delete 12-13:4

@@ -4,7 +4,7 @@
   "description": "Command-based extension for generating inline completion suggestions using VS Code's inline completions API",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.99.0"
+    "vscode": "^1.96.0"
   },
   "enabledApiProposals": [
     "inlineCompletionsAdditions"
