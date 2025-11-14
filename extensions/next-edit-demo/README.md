@@ -245,12 +245,6 @@ The output channel shows:
 - Check for exact matches (case-sensitive)
 - Ensure the text is properly quoted
 
-**"Cursor not in showRange"**
-
-- Suggestions only appear when cursor is within 4 lines of the target
-- Move cursor closer to the target location
-- Or adjust the command to target a location near the cursor
-
 ## Technical Details
 
 ### API Used
@@ -258,14 +252,13 @@ The output channel shows:
 The extension uses VS Code's `InlineCompletionItemProvider` API with the **inlineCompletionsAdditions** API (stabilized in VS Code 1.99+). Key properties:
 
 - **`isInlineEdit: true`** - Marks the suggestion as an inline edit suggestion
-- **`showRange`** - Allows display when cursor is within 4 lines of the edit
+- **`showRange`** - Allows display of suggestions regardless of cursor position (covers entire document)
 - **`displayLocation`** - Visual indicator showing where the edit will be applied
 
 ### Limitations
 
 - Inline completions support only a single range per suggestion
 - For multiple matches, a combined edit is created spanning from first to last match
-- Suggestions are filtered if cursor is not within 4 lines of the target (showRange)
 
 ## Reference
 

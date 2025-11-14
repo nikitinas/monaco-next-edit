@@ -393,19 +393,13 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         const targetPosition = new vscode.Position(command.line, Math.min(command.column, targetLine.text.length));
         const range = new vscode.Range(targetPosition, targetPosition);
         
-        // Calculate showRange (4 lines before/after target)
+        // Calculate showRange (entire document - no limit)
         const showRange = new vscode.Range(
-            Math.max(command.line - 4, 0),
             0,
-            Math.min(command.line + 4, document.lineCount - 1),
+            0,
+            document.lineCount - 1,
             Number.MAX_SAFE_INTEGER
         );
-        
-        // Filter: Only return suggestion if cursor is within showRange
-        if (!showRange.contains(cursorPosition)) {
-            this.outputChannel.appendLine(`    ❌ Cursor not in showRange - filtering out suggestion`);
-            return undefined;
-        }
         
         const item = new vscode.InlineCompletionItem(command.text, range);
         item.isInlineEdit = true;
@@ -464,21 +458,16 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         // If only one match, use simple replacement
         if (matchesToProcess.length === 1) {
             const foundRange = matchesToProcess[0];
-        const showRange = new vscode.Range(
-                Math.max(foundRange.start.line - 4, 0),
-            0,
-                Math.min(foundRange.end.line + 4, document.lineCount - 1),
-            Number.MAX_SAFE_INTEGER
-        );
-        
-        if (!showRange.contains(cursorPosition)) {
-            this.outputChannel.appendLine(`    ❌ Cursor not in showRange - filtering out suggestion`);
-            return undefined;
-        }
+            const showRange = new vscode.Range(
+                0,
+                0,
+                document.lineCount - 1,
+                Number.MAX_SAFE_INTEGER
+            );
         
             const item = new vscode.InlineCompletionItem(command.dst, foundRange);
-        item.isInlineEdit = true;
-        item.showRange = showRange;
+            item.isInlineEdit = true;
+            item.showRange = showRange;
         item.displayLocation = {
                 range: foundRange,
                 label: `Replace "${command.src}" with "${command.dst}" at line ${foundRange.start.line + 1}`,
@@ -531,16 +520,11 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         );
 
         const showRange = new vscode.Range(
-            Math.max(startLine - 4, 0),
             0,
-            Math.min(endLine + 4, document.lineCount - 1),
+            0,
+            document.lineCount - 1,
             Number.MAX_SAFE_INTEGER
         );
-        
-        if (!showRange.contains(cursorPosition)) {
-            this.outputChannel.appendLine(`    ❌ Cursor not in showRange - filtering out suggestion`);
-            return undefined;
-        }
 
         const item = new vscode.InlineCompletionItem(resultText, combinedRange);
         item.isInlineEdit = true;
@@ -624,16 +608,11 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
                     
                     // For multiple matches, we need to return early with the combined edit
                     const showRange = new vscode.Range(
-                        Math.max(command.line - 4, 0),
                         0,
-                        Math.min(command.line + 4, document.lineCount - 1),
+                        0,
+                        document.lineCount - 1,
                         Number.MAX_SAFE_INTEGER
                     );
-
-                    if (!showRange.contains(cursorPosition)) {
-                        this.outputChannel.appendLine(`    ❌ Cursor not in showRange - filtering out suggestion`);
-                        return undefined;
-                    }
 
                     const item = new vscode.InlineCompletionItem(resultText, targetRange);
                     item.isInlineEdit = true;
@@ -724,16 +703,11 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
                 );
 
                 const showRange = new vscode.Range(
-                    Math.max(startLine - 4, 0),
                     0,
-                    Math.min(endLine + 4, document.lineCount - 1),
+                    0,
+                    document.lineCount - 1,
                     Number.MAX_SAFE_INTEGER
                 );
-
-                if (!showRange.contains(cursorPosition)) {
-                    this.outputChannel.appendLine(`    ❌ Cursor not in showRange - filtering out suggestion`);
-                    return undefined;
-                }
 
                 const item = new vscode.InlineCompletionItem(resultText, combinedRange);
                 item.isInlineEdit = true;
@@ -777,19 +751,13 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             return undefined;
         }
 
-        // Calculate showRange
+        // Calculate showRange (entire document - no limit)
         const showRange = new vscode.Range(
-            Math.max(targetRange.start.line - 4, 0),
             0,
-            Math.min(targetRange.end.line + 4, document.lineCount - 1),
+            0,
+            document.lineCount - 1,
             Number.MAX_SAFE_INTEGER
         );
-
-        // Filter: Only return suggestion if cursor is within showRange
-        if (!showRange.contains(cursorPosition)) {
-            this.outputChannel.appendLine(`    ❌ Cursor not in showRange - filtering out suggestion`);
-            return undefined;
-        }
 
         // Empty string means delete
         const item = new vscode.InlineCompletionItem('', targetRange);
