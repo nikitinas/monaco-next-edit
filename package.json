@@ -13,7 +13,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e:debug": "playwright test --debug",
+    "pack:next-edit-demo": "npm --prefix extensions/next-edit-demo run package",
+    "pack:next-edit-demo:build": "npm --prefix extensions/next-edit-demo run compile && npm --prefix extensions/next-edit-demo run package"
   },
   "dependencies": {
     "monaco-editor": "^0.51.0"

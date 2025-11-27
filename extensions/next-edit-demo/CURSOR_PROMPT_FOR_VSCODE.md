@@ -113,3 +113,4 @@ Thank you!
 5. "Can you find where VS Code validates or filters inline completion items before displaying them?"
 
 6. "What's the difference between how VS Code handles regular inline completions vs. inline edits (isInlineEdit: true)?"
+
