@@ -64,12 +64,10 @@ export function activate(context: vscode.ExtensionContext) {
     outputChannel.appendLine('✅ Command-based Inline Completion Suggestions');
     outputChannel.appendLine('Supported commands:');
     outputChannel.appendLine('  - insert <text> at <line>:<column>');
-    outputChannel.appendLine('  - replace "<src>" with "<dst>" [at|in] <line>[-<line>]');
-    outputChannel.appendLine('  - replace all "<src>" with "<dst>" [at|in] <line>[-<line>]');
+    outputChannel.appendLine('  - replace "<src>" with "<dst>" [at|in] <line>[-<line>] (replaces all by default)');
     outputChannel.appendLine('  - replace <N> "<src>" with "<dst>" [at|in] <line>[-<line>]');
-    outputChannel.appendLine('  - delete "<text>" [at|in] <line>:<start>-<end>');
-    outputChannel.appendLine('  - delete "<text>" [at|in] <line>[-<end>]');
-    outputChannel.appendLine('  - delete all "<text>" [at|in] <line>[-<end>]');
+    outputChannel.appendLine('  - delete "<text>" [at|in] <line>:<start>-<end> (deletes all by default)');
+    outputChannel.appendLine('  - delete "<text>" [at|in] <line>[-<end>] (deletes all by default)');
     outputChannel.appendLine('  - delete <N> "<text>" [at|in] <line>[-<end>]');
     outputChannel.appendLine('  - delete <line>-<line>:<column>');
 }
@@ -101,28 +99,20 @@ async function insertSampleCommands(outputChannel: vscode.OutputChannel): Promis
         'insert lala at 12:3',
         '',
         '// REPLACE COMMANDS',
-        '// Replace first occurrence (default)',
+        '// Replace all occurrences (default)',
         'replace "var" with "const" at 1-10',
         'replace "str" with "string" in 12-15',
         'replace "a" with "b" at 14',
-        '',
-        '// Replace all occurrences',
-        'replace all "==" with "===" at 1-20',
-        'replace all "old" with "new" in 5-15',
         '',
         '// Replace first N occurrences',
         'replace 2 "debug" with "info" at 1-10',
         'replace 3 "temp" with "result" in 5-20',
         '',
         '// DELETE COMMANDS',
-        '// Delete with text and line range (first occurrence)',
+        '// Delete with text and line range (all occurrences by default)',
         'delete "console.log" at 1-10',
         'delete "TODO" in 5-15',
         'delete "text" at 14',
-        '',
-        '// Delete all occurrences',
-        'delete all " " at 1-20',
-        'delete all "debug" in 5-15',
         '',
         '// Delete first N occurrences',
         'delete 2 "old" at 1-10',
@@ -130,7 +120,7 @@ async function insertSampleCommands(outputChannel: vscode.OutputChannel): Promis
         '',
         '// Delete with text and column range',
         'delete " " at 14:2-16',
-        'delete all "x" in 5:0-50',
+        'delete 5 "x" in 5:0-50',
         '',
         '// Delete by position (without text)',
         'delete 12-13:4',
@@ -167,7 +157,7 @@ interface ReplaceCommand {
     dst: string;
     startLine: number;
     endLine: number;
-    count?: number | 'all'; // Number of matches to replace: undefined/1 = first, 'all' = all, number = first N
+    count?: number | 'all'; // Number of matches to replace: 'all' = all (default), number = first N
 }
 
 interface DeleteCommand {
@@ -179,7 +169,7 @@ interface DeleteCommand {
     startColumn?: number; // For delete with text: start column (optional)
     endColumn?: number; // For delete with text: end column (optional)
     column?: number; // For delete without text: column number
-    count?: number | 'all'; // Number of matches to delete: undefined/1 = first, 'all' = all, number = first N
+    count?: number | 'all'; // Number of matches to delete: 'all' = all (default), number = first N
 }
 
 type ParsedCommand = InsertCommand | ReplaceCommand | DeleteCommand;
@@ -247,9 +237,11 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
      * Parses a command from the current line text.
      * Supports:
      * - insert <text> at <line>:<column>
-     * - replace "<src>" with "<dst>" at <line>[-<line>] (single line or range)
-     * - delete "<text>" at <line>:<start>-<end> (with column range)
-     * - delete "<text>" at <line>[-<end>] (without column, single line or range)
+     * - replace "<src>" with "<dst>" at <line>[-<line>] (replaces all occurrences by default)
+     * - replace <N> "<src>" with "<dst>" at <line>[-<line>] (replaces first N occurrences)
+     * - delete "<text>" at <line>:<start>-<end> (deletes all occurrences by default)
+     * - delete "<text>" at <line>[-<end>] (deletes all occurrences by default)
+     * - delete <N> "<text>" at <line>[-<end>] (deletes first N occurrences)
      * - delete <line>-<line>:<column> (without text, with column)
      */
     private parseCommand(lineText: string): ParsedCommand | undefined {
@@ -264,12 +256,10 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             return { type: 'insert', text, line, column };
         }
 
-        // Try to parse replace command with count: replace [all|<N>] "<src>" with "<dst>" [at|in] <line>[-<line>]
-        // First try with "all" or number and line range
-        const replaceWithCountMatch = trimmed.match(/^replace\s+(all|\d+)\s+"([^"]+)"\s+with\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
+        // Try to parse replace command with numeric count: replace <N> "<src>" with "<dst>" [at|in] <line>[-<line>]
+        const replaceWithCountMatch = trimmed.match(/^replace\s+(\d+)\s+"([^"]+)"\s+with\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (replaceWithCountMatch) {
-            const countStr = replaceWithCountMatch[1].toLowerCase();
-            const count = countStr === 'all' ? 'all' : parseInt(countStr, 10);
+            const count = parseInt(replaceWithCountMatch[1], 10);
             const src = replaceWithCountMatch[2];
             const dst = replaceWithCountMatch[3];
             const startLine = parseInt(replaceWithCountMatch[5], 10) - 1; // Convert to 0-based
@@ -278,7 +268,7 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             return { type: 'replace', src, dst, startLine, endLine, count };
         }
 
-        // Try to parse replace command without count (defaults to first): replace "<src>" with "<dst>" [at|in] <line>[-<line>]
+        // Try to parse replace command without count (defaults to all): replace "<src>" with "<dst>" [at|in] <line>[-<line>]
         const replaceMatch = trimmed.match(/^replace\s+"([^"]+)"\s+with\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (replaceMatch) {
             const src = replaceMatch[1];
@@ -286,14 +276,13 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             const startLine = parseInt(replaceMatch[4], 10) - 1; // Convert to 0-based
             const endLineStr = replaceMatch[5];
             const endLine = endLineStr ? parseInt(endLineStr, 10) - 1 : startLine; // If no end line, use start line
-            return { type: 'replace', src, dst, startLine, endLine }; // count defaults to 1 (first occurrence)
+            return { type: 'replace', src, dst, startLine, endLine, count: 'all' }; // count defaults to 'all' (all occurrences)
         }
 
-        // Try to parse delete with text and column range: delete [all|<N>] "<text>" [at|in] <line>:<start>-<end>
-        const deleteWithTextAndColumnWithCountMatch = trimmed.match(/^delete\s+(all|\d+)\s+"([^"]+)"\s+(at|in)\s+(\d+):(\d+)-(\d+)$/i);
+        // Try to parse delete with text and column range with numeric count: delete <N> "<text>" [at|in] <line>:<start>-<end>
+        const deleteWithTextAndColumnWithCountMatch = trimmed.match(/^delete\s+(\d+)\s+"([^"]+)"\s+(at|in)\s+(\d+):(\d+)-(\d+)$/i);
         if (deleteWithTextAndColumnWithCountMatch) {
-            const countStr = deleteWithTextAndColumnWithCountMatch[1].toLowerCase();
-            const count = countStr === 'all' ? 'all' : parseInt(countStr, 10);
+            const count = parseInt(deleteWithTextAndColumnWithCountMatch[1], 10);
             const text = deleteWithTextAndColumnWithCountMatch[2];
             const line = parseInt(deleteWithTextAndColumnWithCountMatch[4], 10) - 1; // Convert to 0-based
             const startColumn = parseInt(deleteWithTextAndColumnWithCountMatch[5], 10);
@@ -301,21 +290,20 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             return { type: 'delete', text, line, startColumn, endColumn, count };
         }
 
-        // Try to parse delete with text and column range (no count): delete "<text>" [at|in] <line>:<start>-<end>
+        // Try to parse delete with text and column range (no count, defaults to all): delete "<text>" [at|in] <line>:<start>-<end>
         const deleteWithTextAndColumnMatch = trimmed.match(/^delete\s+"([^"]+)"\s+(at|in)\s+(\d+):(\d+)-(\d+)$/i);
         if (deleteWithTextAndColumnMatch) {
             const text = deleteWithTextAndColumnMatch[1];
             const line = parseInt(deleteWithTextAndColumnMatch[3], 10) - 1; // Convert to 0-based
             const startColumn = parseInt(deleteWithTextAndColumnMatch[4], 10);
             const endColumn = parseInt(deleteWithTextAndColumnMatch[5], 10);
-            return { type: 'delete', text, line, startColumn, endColumn }; // count defaults to 1
+            return { type: 'delete', text, line, startColumn, endColumn, count: 'all' }; // count defaults to 'all'
         }
 
-        // Try to parse delete with text and line range with count: delete [all|<N>] "<text>" [at|in] <line>[-<end>]
-        const deleteWithTextAndLineRangeWithCountMatch = trimmed.match(/^delete\s+(all|\d+)\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
+        // Try to parse delete with text and line range with numeric count: delete <N> "<text>" [at|in] <line>[-<end>]
+        const deleteWithTextAndLineRangeWithCountMatch = trimmed.match(/^delete\s+(\d+)\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (deleteWithTextAndLineRangeWithCountMatch) {
-            const countStr = deleteWithTextAndLineRangeWithCountMatch[1].toLowerCase();
-            const count = countStr === 'all' ? 'all' : parseInt(countStr, 10);
+            const count = parseInt(deleteWithTextAndLineRangeWithCountMatch[1], 10);
             const text = deleteWithTextAndLineRangeWithCountMatch[2];
             const startLine = parseInt(deleteWithTextAndLineRangeWithCountMatch[4], 10) - 1; // Convert to 0-based
             const endLineStr = deleteWithTextAndLineRangeWithCountMatch[5];
@@ -323,14 +311,14 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             return { type: 'delete', text, startLine, endLine, count };
         }
 
-        // Try to parse delete with text and line range (no column, no count): delete "<text>" [at|in] <line>[-<end>]
+        // Try to parse delete with text and line range (no column, no count, defaults to all): delete "<text>" [at|in] <line>[-<end>]
         const deleteWithTextAndLineRangeMatch = trimmed.match(/^delete\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (deleteWithTextAndLineRangeMatch) {
             const text = deleteWithTextAndLineRangeMatch[1];
             const startLine = parseInt(deleteWithTextAndLineRangeMatch[3], 10) - 1; // Convert to 0-based
             const endLineStr = deleteWithTextAndLineRangeMatch[4];
             const endLine = endLineStr ? parseInt(endLineStr, 10) - 1 : startLine; // If no end line, use start line
-            return { type: 'delete', text, startLine, endLine }; // count defaults to 1
+            return { type: 'delete', text, startLine, endLine, count: 'all' }; // count defaults to 'all'
         }
 
         // Try to parse delete without text: delete <line>-<line>:<column>
@@ -450,7 +438,8 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         }
 
         // Determine how many matches to process
-        const count = command.count === undefined ? 1 : (command.count === 'all' ? matches.length : command.count);
+        // count defaults to 'all' (all occurrences), or can be a number for first N occurrences
+        const count = command.count === 'all' || command.count === undefined ? matches.length : command.count;
         const matchesToProcess = matches.slice(0, Math.min(count, matches.length));
         
         this.outputChannel.appendLine(`    Found ${matches.length} match(es), processing ${matchesToProcess.length}`);
@@ -579,7 +568,8 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
                 );
             } else {
                 // Determine how many matches to process
-                const count = command.count === undefined ? 1 : (command.count === 'all' ? matches.length : command.count);
+                // count defaults to 'all' (all occurrences), or can be a number for first N occurrences
+                const count = command.count === 'all' || command.count === undefined ? matches.length : command.count;
                 const matchesToProcess = matches.slice(0, Math.min(count, matches.length));
                 
                 this.outputChannel.appendLine(`    Found ${matches.length} match(es) in column range, processing ${matchesToProcess.length}`);
@@ -655,7 +645,8 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             }
 
             // Determine how many matches to process
-            const count = command.count === undefined ? 1 : (command.count === 'all' ? matches.length : command.count);
+            // count defaults to 'all' (all occurrences), or can be a number for first N occurrences
+            const count = command.count === 'all' || command.count === undefined ? matches.length : command.count;
             const matchesToProcess = matches.slice(0, Math.min(count, matches.length));
             
             this.outputChannel.appendLine(`    Found ${matches.length} match(es), processing ${matchesToProcess.length}`);

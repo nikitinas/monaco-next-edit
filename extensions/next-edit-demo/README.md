@@ -75,14 +75,13 @@ Replaces occurrences of source text with destination text within a line range.
 **Syntax:**
 
 ```
-replace [all|<N>] "<src>" with "<dst>" [at|in] <line>[-<endLine>]
+replace [<N>] "<src>" with "<dst>" [at|in] <line>[-<endLine>]
 ```
 
 **Parameters:**
 
-- `[all|<N>]` - Optional count specification:
-  - Omitted: Replaces first occurrence (default)
-  - `all`: Replaces all occurrences
+- `[<N>]` - Optional count specification:
+  - Omitted: Replaces all occurrences (default)
   - `<N>`: Replaces first N occurrences (e.g., `2`, `3`)
 - `"<src>"` - Source text to find (must be quoted)
 - `"<dst>"` - Destination text to replace with (must be quoted)
@@ -96,7 +95,7 @@ replace [all|<N>] "<src>" with "<dst>" [at|in] <line>[-<endLine>]
 ```
 replace "str" with "string" at 12-15
 replace "a" with "b" at 14
-replace all "var" with "const" in 1-10
+replace "var" with "const" in 1-10
 replace 2 "==" with "===" at 5-8
 replace "old" with "new" in 20-25
 ```
@@ -104,7 +103,8 @@ replace "old" with "new" in 20-25
 **Behavior:**
 
 - Searches for all occurrences of `<src>` in the specified line range
-- Processes matches according to the count specification
+- By default, replaces all matching occurrences
+- If a count `<N>` is specified, replaces only the first N occurrences
 - Creates a combined edit if multiple matches are processed
 
 #### 3. Delete Command
@@ -116,13 +116,13 @@ Deletes text or characters at specified positions.
 **3a. Delete with text and column range:**
 
 ```
-delete [all|<N>] "<text>" [at|in] <line>:<startColumn>-<endColumn>
+delete [<N>] "<text>" [at|in] <line>:<startColumn>-<endColumn>
 ```
 
 **3b. Delete with text and line range:**
 
 ```
-delete [all|<N>] "<text>" [at|in] <line>[-<endLine>]
+delete [<N>] "<text>" [at|in] <line>[-<endLine>]
 ```
 
 **3c. Delete without text (by position):**
@@ -133,7 +133,9 @@ delete <startLine>-<endLine>:<column>
 
 **Parameters:**
 
-- `[all|<N>]` - Optional count specification (same as replace)
+- `[<N>]` - Optional count specification:
+  - Omitted: Deletes all occurrences (default)
+  - `<N>`: Deletes first N occurrences (e.g., `2`, `3`)
 - `"<text>"` - Text to delete (must be quoted for text-based deletion)
 - `[at|in]` - Optional keyword (can use either `at` or `in`)
 - `<line>` - Target line number (1-based)
@@ -149,7 +151,7 @@ delete <startLine>-<endLine>:<column>
 delete " " at 14:2-16
 delete "console.log" in 5-10
 delete "text" at 14
-delete all "TODO" at 1-20
+delete "TODO" at 1-20
 delete 2 "debug" in 10-15
 delete 12-13:4
 ```
@@ -157,8 +159,9 @@ delete 12-13:4
 **Behavior:**
 
 - For text-based deletion: Searches for the specified text and deletes it
+- By default, deletes all matching occurrences
+- If a count `<N>` is specified, deletes only the first N occurrences
 - For position-based deletion: Deletes the character at the specified column in the specified line range
-- Processes matches according to the count specification
 - Creates a combined edit if multiple matches are processed
 
 ## Quick Start
@@ -183,8 +186,8 @@ To quickly learn the command syntax, use the built-in command to insert sample c
 ### Example Workflow
 
 1. Type: `replace "var" with "const" at 1-10`
-2. An inline completion suggestion appears showing the replacement
-3. Press **TAB** to apply the replacement
+2. An inline completion suggestion appears showing all replacements in the range
+3. Press **TAB** to apply all replacements
 
 ## Output Channel
 
