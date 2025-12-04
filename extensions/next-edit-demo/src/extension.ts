@@ -392,12 +392,6 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         const item = new vscode.InlineCompletionItem(command.text, range);
         item.isInlineEdit = true;
         item.showRange = showRange;
-        item.displayLocation = {
-            range: range,
-            label: `Insert "${command.text}" at line ${command.line + 1}:${command.column}`,
-            kind: 0, // InlineCompletionDisplayLocationKind.Code
-            jumpToEdit: command.line !== cursorPosition.line
-        };
         
         return item;
     }
@@ -457,12 +451,6 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             const item = new vscode.InlineCompletionItem(command.dst, foundRange);
             item.isInlineEdit = true;
             item.showRange = showRange;
-        item.displayLocation = {
-                range: foundRange,
-                label: `Replace "${command.src}" with "${command.dst}" at line ${foundRange.start.line + 1}`,
-            kind: 0,
-                jumpToEdit: foundRange.start.line !== cursorPosition.line
-        };
         return item;
     }
 
@@ -518,12 +506,6 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         const item = new vscode.InlineCompletionItem(resultText, combinedRange);
         item.isInlineEdit = true;
         item.showRange = showRange;
-        item.displayLocation = {
-            range: combinedRange,
-            label: `Replace ${matchesToProcess.length} occurrence(s) of "${command.src}" with "${command.dst}"`,
-            kind: 0,
-            jumpToEdit: startLine !== cursorPosition.line
-        };
 
         return item;
     }
@@ -607,12 +589,6 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
                     const item = new vscode.InlineCompletionItem(resultText, targetRange);
                     item.isInlineEdit = true;
                     item.showRange = showRange;
-                    item.displayLocation = {
-                        range: targetRange,
-                        label: `Delete ${matchesToProcess.length} occurrence(s) of "${command.text}" at line ${command.line + 1}`,
-                        kind: 0,
-                        jumpToEdit: command.line !== cursorPosition.line
-                    };
                     return item;
                 }
             }
@@ -703,12 +679,6 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
                 const item = new vscode.InlineCompletionItem(resultText, combinedRange);
                 item.isInlineEdit = true;
                 item.showRange = showRange;
-                item.displayLocation = {
-                    range: combinedRange,
-                    label: `Delete ${matchesToProcess.length} occurrence(s) of "${command.text}"`,
-                    kind: 0,
-                    jumpToEdit: startLine !== cursorPosition.line
-                };
                 return item;
         }
         } else if (command.startLine !== undefined && command.endLine !== undefined && command.column !== undefined) {
@@ -754,12 +724,6 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         const item = new vscode.InlineCompletionItem('', targetRange);
         item.isInlineEdit = true;
         item.showRange = showRange;
-        item.displayLocation = {
-            range: targetRange,
-            label: `Delete at line ${targetRange.start.line + 1}:${targetRange.start.character}`,
-            kind: 0,
-            jumpToEdit: targetRange.start.line !== cursorPosition.line
-        };
 
         return item;
     }
