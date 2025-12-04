@@ -12,7 +12,7 @@ import * as vscode from 'vscode';
  * - delete "<text>" at <line>:<start>-<end>
  * - delete <line>-<line>:<column>
  */
-export async function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext) {
     console.log('Inline Completions Demo extension is now active!');
 
     // Create output channel for debugging
@@ -25,12 +25,6 @@ export async function activate(context: vscode.ExtensionContext) {
     const inlineSuggestEnabled = config.get('inlineSuggest.enabled', true);
     const inlineSuggestEditsEnabled = config.get('inlineSuggest.edits.enabled', false);
     
-    // Check if inlineSuggest.edits.enabled was explicitly set before
-    const editsEnabledInspect = config.inspect('inlineSuggest.edits.enabled');
-    const wasEditsEnabledSet = editsEnabledInspect?.globalValue !== undefined || 
-                                editsEnabledInspect?.workspaceValue !== undefined ||
-                                editsEnabledInspect?.workspaceFolderValue !== undefined;
-    
     outputChannel.appendLine(`VS Code Settings:`);
     outputChannel.appendLine(`  editor.inlineSuggest.enabled: ${inlineSuggestEnabled}`);
     outputChannel.appendLine(`  editor.inlineSuggest.edits.enabled: ${inlineSuggestEditsEnabled} ⚠️ CRITICAL FOR INLINE COMPLETION SUGGESTIONS`);
@@ -42,23 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
         );
     }
     
-    // Automatically enable inlineSuggest.edits.enabled if it wasn't set before
-    if (!inlineSuggestEditsEnabled && !wasEditsEnabledSet) {
-        outputChannel.appendLine(`  🔧 Auto-enabling editor.inlineSuggest.edits.enabled...`);
-        try {
-            await config.update('inlineSuggest.edits.enabled', true, vscode.ConfigurationTarget.Global);
-            outputChannel.appendLine(`  ✅ Successfully enabled editor.inlineSuggest.edits.enabled`);
-            outputChannel.appendLine(`  🔄 Reloading window to apply changes...`);
-            
-            // Automatically reload the window
-            await vscode.commands.executeCommand('workbench.action.reloadWindow');
-        } catch (error) {
-            outputChannel.appendLine(`  ❌ Failed to enable setting: ${error}`);
-            vscode.window.showErrorMessage(
-                `Inline Completions Demo: Failed to enable "editor.inlineSuggest.edits.enabled": ${error}`
-            );
-        }
-    } else if (!inlineSuggestEditsEnabled) {
+    if (!inlineSuggestEditsEnabled) {
         outputChannel.appendLine(`  ❌ CRITICAL: Inline edits are disabled! Inline completion suggestions will NOT work!`);
         outputChannel.appendLine(`  To enable: Set "editor.inlineSuggest.edits.enabled": true in settings.json`);
         vscode.window.showErrorMessage(
