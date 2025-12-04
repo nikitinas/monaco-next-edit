@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension (Next Edit Demo)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/next-edit-demo"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/next-edit-demo/dist/**/*.js"
+      ],
+      "preLaunchTask": "watch",
+      "sourceMaps": true,
+      "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "name": "Extension Tests",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/extensions/next-edit-demo",
+        "--extensionTestsPath=${workspaceFolder}/extensions/next-edit-demo/dist/test/suite/index"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extensions/next-edit-demo/dist/**/*.js"
+      ],
+      "preLaunchTask": "compile"
+    }
+  ]
+}
