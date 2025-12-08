@@ -8,7 +8,10 @@ import * as vscode from 'vscode';
  * This extension parses commands from the current line and generates inline completion suggestions.
  * Supported commands:
  * - insert <text> at <line>:<column>
+ * - replace <line>[-<line>] with "<text>" (replace entire lines)
  * - replace "<src>" with "<dst>" at <line>-<line>
+ * - delete <line> (delete entire line)
+ * - delete <line>-<line> (delete entire lines)
  * - delete "<text>" at <line>:<start>-<end>
  * - delete <line>-<line>:<column>
  */
@@ -64,8 +67,11 @@ export function activate(context: vscode.ExtensionContext) {
     outputChannel.appendLine('✅ Command-based Inline Completion Suggestions');
     outputChannel.appendLine('Supported commands:');
     outputChannel.appendLine('  - insert <text> at <line>:<column>');
+    outputChannel.appendLine('  - replace <line>[-<line>] with "<text>" (replace entire lines)');
     outputChannel.appendLine('  - replace "<src>" with "<dst>" [at|in] <line>[-<line>] (replaces all by default)');
     outputChannel.appendLine('  - replace <N> "<src>" with "<dst>" [at|in] <line>[-<line>]');
+    outputChannel.appendLine('  - delete <line> (delete entire line)');
+    outputChannel.appendLine('  - delete <line>-<line> (delete entire lines)');
     outputChannel.appendLine('  - delete "<text>" [at|in] <line>:<start>-<end> (deletes all by default)');
     outputChannel.appendLine('  - delete "<text>" [at|in] <line>[-<end>] (deletes all by default)');
     outputChannel.appendLine('  - delete <N> "<text>" [at|in] <line>[-<end>]');
@@ -97,8 +103,17 @@ async function insertSampleCommands(outputChannel: vscode.OutputChannel): Promis
         '// Insert text at a specific position',
         'insert "Hello World" at 5:10',
         'insert lala at 12:3',
+        '// Insert multiline text (use \\n for line breaks)',
+        'insert "line1\\nline2\\nline3" at 5:10',
         '',
         '// REPLACE COMMANDS',
+        '// Replace entire lines (simple syntax)',
+        'replace 10-14 with "some text"',
+        'replace 11 with "new line"',
+        '// Replace with multiline text (use \\n for line breaks)',
+        'replace 10-14 with "line1\\nline2\\nline3"',
+        'replace 11 with "first\\nsecond"',
+        '',
         '// Replace all occurrences (default)',
         'replace "var" with "const" at 1-10',
         'replace "str" with "string" in 12-15',
@@ -109,6 +124,10 @@ async function insertSampleCommands(outputChannel: vscode.OutputChannel): Promis
         'replace 3 "temp" with "result" in 5-20',
         '',
         '// DELETE COMMANDS',
+        '// Delete entire lines (simple syntax)',
+        'delete 8',
+        'delete 8-15',
+        '',
         '// Delete with text and line range (all occurrences by default)',
         'delete "console.log" at 1-10',
         'delete "TODO" in 5-15',
@@ -128,7 +147,9 @@ async function insertSampleCommands(outputChannel: vscode.OutputChannel): Promis
         '// Note: Commands are case-insensitive',
         '// You can use "at" or "in" interchangeably',
         '// Line numbers are 1-based (as shown in editor)',
-        '// Column numbers are 0-based (first character is column 0)'
+        '// Column numbers are 0-based (first character is column 0)',
+        '// Use \\n in quoted strings to insert line breaks (multiline text)',
+        '// Example: "line1\\nline2" will insert two lines'
     ];
 
     const textToInsert = sampleCommands.join(eol) + eol;
@@ -153,23 +174,25 @@ interface InsertCommand {
 
 interface ReplaceCommand {
     type: 'replace';
-    src: string;
+    src?: string; // Optional: if undefined, replace entire lines
     dst: string;
     startLine: number;
     endLine: number;
     count?: number | 'all'; // Number of matches to replace: 'all' = all (default), number = first N
+    replaceLines?: boolean; // If true, replace entire lines instead of text matches
 }
 
 interface DeleteCommand {
     type: 'delete';
     text?: string; // Optional text to delete
-    line?: number; // For delete with text: single line number
+    line?: number; // For delete with text: single line number, or for simple delete: single line
     startLine?: number; // For delete with text: start line (when range specified), or for delete without text: start line
     endLine?: number; // For delete with text: end line (when range specified), or for delete without text: end line
     startColumn?: number; // For delete with text: start column (optional)
     endColumn?: number; // For delete with text: end column (optional)
     column?: number; // For delete without text: column number
     count?: number | 'all'; // Number of matches to delete: 'all' = all (default), number = first N
+    deleteLines?: boolean; // If true, delete entire lines (simple delete command)
 }
 
 type ParsedCommand = InsertCommand | ReplaceCommand | DeleteCommand;
@@ -237,8 +260,11 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
      * Parses a command from the current line text.
      * Supports:
      * - insert <text> at <line>:<column>
+     * - replace <line>[-<line>] with "<text>" (replace entire lines)
      * - replace "<src>" with "<dst>" at <line>[-<line>] (replaces all occurrences by default)
      * - replace <N> "<src>" with "<dst>" at <line>[-<line>] (replaces first N occurrences)
+     * - delete <line> (delete entire line)
+     * - delete <line>-<line> (delete entire lines)
      * - delete "<text>" at <line>:<start>-<end> (deletes all occurrences by default)
      * - delete "<text>" at <line>[-<end>] (deletes all occurrences by default)
      * - delete <N> "<text>" at <line>[-<end>] (deletes first N occurrences)
@@ -256,12 +282,22 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             return { type: 'insert', text, line, column };
         }
 
+        // Try to parse simple replace command: replace <line>[-<line>] with "<text>" (replace entire lines)
+        const replaceLinesMatch = trimmed.match(/^replace\s+(\d+)(?:-(\d+))?\s+with\s+"([^"]+)"$/i);
+        if (replaceLinesMatch) {
+            const startLine = parseInt(replaceLinesMatch[1], 10) - 1; // Convert to 0-based
+            const endLineStr = replaceLinesMatch[2];
+            const endLine = endLineStr ? parseInt(endLineStr, 10) - 1 : startLine; // If no end line, use start line
+            const dst = this.unescapeString(replaceLinesMatch[3]);
+            return { type: 'replace', dst, startLine, endLine, replaceLines: true };
+        }
+
         // Try to parse replace command with numeric count: replace <N> "<src>" with "<dst>" [at|in] <line>[-<line>]
         const replaceWithCountMatch = trimmed.match(/^replace\s+(\d+)\s+"([^"]+)"\s+with\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (replaceWithCountMatch) {
             const count = parseInt(replaceWithCountMatch[1], 10);
-            const src = replaceWithCountMatch[2];
-            const dst = replaceWithCountMatch[3];
+            const src = this.unescapeString(replaceWithCountMatch[2]);
+            const dst = this.unescapeString(replaceWithCountMatch[3]);
             const startLine = parseInt(replaceWithCountMatch[5], 10) - 1; // Convert to 0-based
             const endLineStr = replaceWithCountMatch[6];
             const endLine = endLineStr ? parseInt(endLineStr, 10) - 1 : startLine; // If no end line, use start line
@@ -271,8 +307,8 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         // Try to parse replace command without count (defaults to all): replace "<src>" with "<dst>" [at|in] <line>[-<line>]
         const replaceMatch = trimmed.match(/^replace\s+"([^"]+)"\s+with\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (replaceMatch) {
-            const src = replaceMatch[1];
-            const dst = replaceMatch[2];
+            const src = this.unescapeString(replaceMatch[1]);
+            const dst = this.unescapeString(replaceMatch[2]);
             const startLine = parseInt(replaceMatch[4], 10) - 1; // Convert to 0-based
             const endLineStr = replaceMatch[5];
             const endLine = endLineStr ? parseInt(endLineStr, 10) - 1 : startLine; // If no end line, use start line
@@ -283,7 +319,7 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         const deleteWithTextAndColumnWithCountMatch = trimmed.match(/^delete\s+(\d+)\s+"([^"]+)"\s+(at|in)\s+(\d+):(\d+)-(\d+)$/i);
         if (deleteWithTextAndColumnWithCountMatch) {
             const count = parseInt(deleteWithTextAndColumnWithCountMatch[1], 10);
-            const text = deleteWithTextAndColumnWithCountMatch[2];
+            const text = this.unescapeString(deleteWithTextAndColumnWithCountMatch[2]);
             const line = parseInt(deleteWithTextAndColumnWithCountMatch[4], 10) - 1; // Convert to 0-based
             const startColumn = parseInt(deleteWithTextAndColumnWithCountMatch[5], 10);
             const endColumn = parseInt(deleteWithTextAndColumnWithCountMatch[6], 10);
@@ -293,7 +329,7 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         // Try to parse delete with text and column range (no count, defaults to all): delete "<text>" [at|in] <line>:<start>-<end>
         const deleteWithTextAndColumnMatch = trimmed.match(/^delete\s+"([^"]+)"\s+(at|in)\s+(\d+):(\d+)-(\d+)$/i);
         if (deleteWithTextAndColumnMatch) {
-            const text = deleteWithTextAndColumnMatch[1];
+            const text = this.unescapeString(deleteWithTextAndColumnMatch[1]);
             const line = parseInt(deleteWithTextAndColumnMatch[3], 10) - 1; // Convert to 0-based
             const startColumn = parseInt(deleteWithTextAndColumnMatch[4], 10);
             const endColumn = parseInt(deleteWithTextAndColumnMatch[5], 10);
@@ -304,7 +340,7 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         const deleteWithTextAndLineRangeWithCountMatch = trimmed.match(/^delete\s+(\d+)\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (deleteWithTextAndLineRangeWithCountMatch) {
             const count = parseInt(deleteWithTextAndLineRangeWithCountMatch[1], 10);
-            const text = deleteWithTextAndLineRangeWithCountMatch[2];
+            const text = this.unescapeString(deleteWithTextAndLineRangeWithCountMatch[2]);
             const startLine = parseInt(deleteWithTextAndLineRangeWithCountMatch[4], 10) - 1; // Convert to 0-based
             const endLineStr = deleteWithTextAndLineRangeWithCountMatch[5];
             const endLine = endLineStr ? parseInt(endLineStr, 10) - 1 : startLine; // If no end line, use start line
@@ -314,11 +350,26 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         // Try to parse delete with text and line range (no column, no count, defaults to all): delete "<text>" [at|in] <line>[-<end>]
         const deleteWithTextAndLineRangeMatch = trimmed.match(/^delete\s+"([^"]+)"\s+(at|in)\s+(\d+)(?:-(\d+))?$/i);
         if (deleteWithTextAndLineRangeMatch) {
-            const text = deleteWithTextAndLineRangeMatch[1];
+            const text = this.unescapeString(deleteWithTextAndLineRangeMatch[1]);
             const startLine = parseInt(deleteWithTextAndLineRangeMatch[3], 10) - 1; // Convert to 0-based
             const endLineStr = deleteWithTextAndLineRangeMatch[4];
             const endLine = endLineStr ? parseInt(endLineStr, 10) - 1 : startLine; // If no end line, use start line
             return { type: 'delete', text, startLine, endLine, count: 'all' }; // count defaults to 'all'
+        }
+
+        // Try to parse simple delete command: delete <line> (delete entire line)
+        const deleteSingleLineMatch = trimmed.match(/^delete\s+(\d+)$/i);
+        if (deleteSingleLineMatch) {
+            const line = parseInt(deleteSingleLineMatch[1], 10) - 1; // Convert to 0-based
+            return { type: 'delete', line, deleteLines: true };
+        }
+
+        // Try to parse simple delete command: delete <line>-<line> (delete entire lines)
+        const deleteLinesMatch = trimmed.match(/^delete\s+(\d+)-(\d+)$/i);
+        if (deleteLinesMatch) {
+            const startLine = parseInt(deleteLinesMatch[1], 10) - 1; // Convert to 0-based
+            const endLine = parseInt(deleteLinesMatch[2], 10) - 1; // Convert to 0-based
+            return { type: 'delete', startLine, endLine, deleteLines: true };
         }
 
         // Try to parse delete without text: delete <line>-<line>:<column>
@@ -334,13 +385,46 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         }
 
     /**
-     * Removes quotes from a string if present.
+     * Removes quotes from a string if present and unescapes escape sequences.
+     * Handles: \n (newline), \\ (backslash), \" (quote), \t (tab), etc.
      */
     private unquote(text: string): string {
+        let unquoted: string;
         if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
-            return text.slice(1, -1);
+            unquoted = text.slice(1, -1);
+        } else {
+            unquoted = text;
         }
-        return text;
+        
+        // Unescape escape sequences
+        return this.unescapeString(unquoted);
+    }
+
+    /**
+     * Unescapes escape sequences in a string.
+     * Converts \n to actual newline, \\ to \, \" to ", etc.
+     */
+    private unescapeString(str: string): string {
+        return str.replace(/\\(.)/g, (match, char) => {
+            switch (char) {
+                case 'n': return '\n';
+                case 'r': return '\r';
+                case 't': return '\t';
+                case '\\': return '\\';
+                case '"': return '"';
+                case "'": return "'";
+                default: return match; // Unknown escape sequence, keep as-is
+            }
+        });
+    }
+
+    /**
+     * Converts newlines in text to the document's EOL sequence.
+     */
+    private normalizeEOL(text: string, document: vscode.TextDocument): string {
+        const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+        // Normalize all line endings to the document's EOL
+        return text.replace(/\r\n|\r|\n/g, eol);
     }
 
     /**
@@ -381,6 +465,9 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         const targetPosition = new vscode.Position(command.line, Math.min(command.column, targetLine.text.length));
         const range = new vscode.Range(targetPosition, targetPosition);
         
+        // Normalize EOL sequences in the text to match document's EOL
+        const normalizedText = this.normalizeEOL(command.text, document);
+        
         // Calculate showRange (entire document - no limit)
         const showRange = new vscode.Range(
             0,
@@ -389,7 +476,7 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             Number.MAX_SAFE_INTEGER
         );
         
-        const item = new vscode.InlineCompletionItem(command.text, range);
+        const item = new vscode.InlineCompletionItem(normalizedText, range);
         item.isInlineEdit = true;
         item.showRange = showRange;
         
@@ -407,6 +494,44 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         // Validate line numbers
         if (command.startLine < 0 || command.endLine >= document.lineCount || command.startLine > command.endLine) {
             this.outputChannel.appendLine(`    ❌ Invalid line range: ${command.startLine + 1}-${command.endLine + 1}`);
+            return undefined;
+        }
+
+        // Handle line replacement: replace <line>[-<line>] with "<text>"
+        if (command.replaceLines) {
+            const startLine = command.startLine;
+            const endLine = command.endLine;
+            
+            // Create range from start of first line to end of last line
+            const startLineObj = document.lineAt(startLine);
+            const endLineObj = document.lineAt(endLine);
+            
+            const range = new vscode.Range(
+                new vscode.Position(startLine, 0),
+                new vscode.Position(endLine, endLineObj.text.length)
+            );
+            
+            // Normalize EOL sequences in the replacement text to match document's EOL
+            const replacementText = this.normalizeEOL(command.dst, document);
+            
+            const showRange = new vscode.Range(
+                0,
+                0,
+                document.lineCount - 1,
+                Number.MAX_SAFE_INTEGER
+            );
+            
+            const item = new vscode.InlineCompletionItem(replacementText, range);
+            item.isInlineEdit = true;
+            item.showRange = showRange;
+            
+            this.outputChannel.appendLine(`    Replacing lines ${startLine + 1}-${endLine + 1} with "${replacementText.replace(/\r\n|\r|\n/g, '\\n')}"`);
+            return item;
+        }
+
+        // Handle text replacement: replace "<src>" with "<dst>" at <line>[-<line>]
+        if (!command.src) {
+            this.outputChannel.appendLine(`    ❌ Source text is required for text replacement`);
             return undefined;
         }
 
@@ -438,6 +563,9 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         
         this.outputChannel.appendLine(`    Found ${matches.length} match(es), processing ${matchesToProcess.length}`);
 
+        // Normalize EOL sequences in the replacement text to match document's EOL
+        const normalizedDst = this.normalizeEOL(command.dst, document);
+
         // If only one match, use simple replacement
         if (matchesToProcess.length === 1) {
             const foundRange = matchesToProcess[0];
@@ -448,7 +576,7 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
                 Number.MAX_SAFE_INTEGER
             );
         
-            const item = new vscode.InlineCompletionItem(command.dst, foundRange);
+            const item = new vscode.InlineCompletionItem(normalizedDst, foundRange);
             item.isInlineEdit = true;
             item.showRange = showRange;
         return item;
@@ -477,8 +605,8 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
                 const match = matchesToProcess[matchIndex];
                 // Add text before the match
                 lineResult += lineText.substring(lastPos, match.start.character);
-                // Add the replacement
-                lineResult += command.dst;
+                // Add the replacement (already normalized)
+                lineResult += normalizedDst;
                 lastPos = match.end.character;
                 matchIndex++;
             }
@@ -519,6 +647,78 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         command: DeleteCommand
     ): vscode.InlineCompletionItem | undefined {
         let targetRange: vscode.Range | undefined;
+
+        // Handle simple line deletion: delete <line> or delete <line>-<line>
+        if (command.deleteLines) {
+            if (command.line !== undefined) {
+                // Single line deletion: delete <line>
+                if (command.line < 0 || command.line >= document.lineCount) {
+                    this.outputChannel.appendLine(`    ❌ Invalid line number: ${command.line + 1}`);
+                    return undefined;
+                }
+                
+                // Check if there's a newline after this line that should be deleted too
+                // For the last line, we don't delete the trailing newline
+                if (command.line < document.lineCount - 1) {
+                    // Include the newline character(s) by deleting from start of line to start of next line
+                    targetRange = new vscode.Range(
+                        new vscode.Position(command.line, 0),
+                        new vscode.Position(command.line + 1, 0)
+                    );
+                } else {
+                    // Last line: delete only the line content (no trailing newline)
+                    const lineObj = document.lineAt(command.line);
+                    targetRange = new vscode.Range(
+                        new vscode.Position(command.line, 0),
+                        new vscode.Position(command.line, lineObj.text.length)
+                    );
+                }
+                
+                this.outputChannel.appendLine(`    Deleting line ${command.line + 1}`);
+            } else if (command.startLine !== undefined && command.endLine !== undefined) {
+                // Multiple line deletion: delete <line>-<line>
+                if (command.startLine < 0 || command.endLine >= document.lineCount || command.startLine > command.endLine) {
+                    this.outputChannel.appendLine(`    ❌ Invalid line range: ${command.startLine + 1}-${command.endLine + 1}`);
+                    return undefined;
+                }
+                
+                // Create range from start of first line to end of last line
+                // Include newline after the last line if it's not the last line of the document
+                if (command.endLine < document.lineCount - 1) {
+                    // Delete from start of first line to start of line after the last line (includes newlines)
+                    targetRange = new vscode.Range(
+                        new vscode.Position(command.startLine, 0),
+                        new vscode.Position(command.endLine + 1, 0)
+                    );
+                } else {
+                    // Last line: delete from start of first line to end of last line (no trailing newline)
+                    const endLineObj = document.lineAt(command.endLine);
+                    targetRange = new vscode.Range(
+                        new vscode.Position(command.startLine, 0),
+                        new vscode.Position(command.endLine, endLineObj.text.length)
+                    );
+                }
+                
+                this.outputChannel.appendLine(`    Deleting lines ${command.startLine + 1}-${command.endLine + 1}`);
+            } else {
+                this.outputChannel.appendLine(`    ❌ Invalid delete command: line or line range required`);
+                return undefined;
+            }
+            
+            // Create the delete suggestion
+            const showRange = new vscode.Range(
+                0,
+                0,
+                document.lineCount - 1,
+                Number.MAX_SAFE_INTEGER
+            );
+            
+            const item = new vscode.InlineCompletionItem('', targetRange);
+            item.isInlineEdit = true;
+            item.showRange = showRange;
+            
+            return item;
+        }
 
         if (command.text !== undefined && command.line !== undefined && command.startColumn !== undefined && command.endColumn !== undefined) {
             // Delete with text and column range: delete [all|<N>] "<text>" at <line>:<start>-<end>
