@@ -7,9 +7,9 @@ import * as vscode from 'vscode';
  * 
  * This extension parses commands from the current line and generates inline completion suggestions.
  * Supported commands:
- * - insert <text> at <line>:<column>
+ * - insert <text> at <line>[:<column>] (column defaults to 0 if omitted)
  * - replace <line>[-<line>] with "<text>" (replace entire lines)
- * - replace "<src>" with "<dst>" at <line>-<line>
+ * - replace "<src>" with "<dst>" at <line>[-<line>] (column not needed)
  * - delete <line> (delete entire line)
  * - delete <line>-<line> (delete entire lines)
  * - delete "<text>" at <line>:<start>-<end>
@@ -66,7 +66,7 @@ export function activate(context: vscode.ExtensionContext) {
     outputChannel.appendLine('');
     outputChannel.appendLine('✅ Command-based Inline Completion Suggestions');
     outputChannel.appendLine('Supported commands:');
-    outputChannel.appendLine('  - insert <text> at <line>:<column>');
+    outputChannel.appendLine('  - insert <text> at <line>[:<column>] (column defaults to 0 if omitted)');
     outputChannel.appendLine('  - replace <line>[-<line>] with "<text>" (replace entire lines)');
     outputChannel.appendLine('  - replace "<src>" with "<dst>" [at|in] <line>[-<line>] (replaces all by default)');
     outputChannel.appendLine('  - replace <N> "<src>" with "<dst>" [at|in] <line>[-<line>]');
@@ -103,6 +103,9 @@ async function insertSampleCommands(outputChannel: vscode.OutputChannel): Promis
         '// Insert text at a specific position',
         'insert "Hello World" at 5:10',
         'insert lala at 12:3',
+        '// Insert at line start (column can be omitted, defaults to 0)',
+        'insert "lala" at 6',
+        'insert "start of line" at 10',
         '// Insert multiline text (use \\n for line breaks)',
         'insert "line1\\nline2\\nline3" at 5:10',
         '',
@@ -259,9 +262,9 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
     /**
      * Parses a command from the current line text.
      * Supports:
-     * - insert <text> at <line>:<column>
+     * - insert <text> at <line>[:<column>] (column defaults to 0 if omitted)
      * - replace <line>[-<line>] with "<text>" (replace entire lines)
-     * - replace "<src>" with "<dst>" at <line>[-<line>] (replaces all occurrences by default)
+     * - replace "<src>" with "<dst>" at <line>[-<line>] (replaces all occurrences by default, column not needed)
      * - replace <N> "<src>" with "<dst>" at <line>[-<line>] (replaces first N occurrences)
      * - delete <line> (delete entire line)
      * - delete <line>-<line> (delete entire lines)
@@ -279,6 +282,15 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
             const text = this.unquote(insertMatch[1]);
             const line = parseInt(insertMatch[2], 10) - 1; // Convert to 0-based
             const column = parseInt(insertMatch[3], 10);
+            return { type: 'insert', text, line, column };
+        }
+
+        // Try to parse insert command without column: insert <text> at <line> (defaults to column 0)
+        const insertWithoutColumnMatch = trimmed.match(/^insert\s+(.+?)\s+at\s+(\d+)$/i);
+        if (insertWithoutColumnMatch) {
+            const text = this.unquote(insertWithoutColumnMatch[1]);
+            const line = parseInt(insertWithoutColumnMatch[2], 10) - 1; // Convert to 0-based
+            const column = 0; // Default to column 0 when not specified
             return { type: 'insert', text, line, column };
         }
 
