@@ -3,7 +3,7 @@
   "displayName": "Inline Completions Demo",
   "publisher": "test",
   "description": "Command-based extension for generating inline completion suggestions using VS Code's inline completions API",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.96.0"
   },
