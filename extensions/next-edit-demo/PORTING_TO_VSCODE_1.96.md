@@ -219,7 +219,7 @@ for (const completion of c.inlineCompletions) {
 **Location**: Various settings files
 
 **What to add**:
-- `editor.inlineSuggest.edits.enabled` setting
+- `editor.inlineSuggest.edits.experimental.enabled` setting
 - Default: `false` (opt-in)
 - UI toggle in settings
 

@@ -80,7 +80,7 @@ Even though the setting is enabled, VS Code might not be requesting inline edits
 
 **What to check**:
 
-- The setting `editor.inlineSuggest.edits.enabled` must be `true` ✅ (you have this)
+- The setting `editor.inlineSuggest.edits.experimental.enabled` must be `true` ✅ (you have this)
 - But VS Code might still not request them in certain scenarios
 
 ## How to Test

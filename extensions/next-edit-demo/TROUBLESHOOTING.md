@@ -1,20 +1,20 @@
 # Troubleshooting: Next-Line Suggestions Not Appearing
 
-## Critical Setting: `editor.inlineSuggest.edits.enabled`
+## Critical Setting: `editor.inlineSuggest.edits.experimental.enabled`
 
 **This is likely the issue!** VS Code only requests inline edits from providers when this setting is enabled.
 
 ### How to Check
 
 1. Open VS Code Settings (Cmd+, / Ctrl+,)
-2. Search for: `editor.inlineSuggest.edits.enabled`
+2. Search for: `editor.inlineSuggest.edits.experimental.enabled`
 3. Make sure it's **checked/enabled**
 
 Or add to your `settings.json`:
 
 ```json
 {
-  "editor.inlineSuggest.edits.enabled": true
+  "editor.inlineSuggest.edits.experimental.enabled": true
 }
 ```
 
@@ -22,8 +22,8 @@ Or add to your `settings.json`:
 
 VS Code determines `context.includeInlineEdits` based on this setting:
 
-- `editor.inlineSuggest.edits.enabled: true` → `context.includeInlineEdits = true` → VS Code requests inline edits
-- `editor.inlineSuggest.edits.enabled: false` → `context.includeInlineEdits = false` → VS Code **skips** inline edits
+- `editor.inlineSuggest.edits.experimental.enabled: true` → `context.includeInlineEdits = true` → VS Code requests inline edits
+- `editor.inlineSuggest.edits.experimental.enabled: false` → `context.includeInlineEdits = false` → VS Code **skips** inline edits
 
 **Location in VS Code source**: `src/vs/editor/contrib/inlineCompletions/browser/model/inlineCompletionsModel.ts:128`
 
@@ -76,7 +76,7 @@ Make sure the provider is registered correctly. Check the extension activation l
 1. **Enable the setting**:
 
    ```json
-   "editor.inlineSuggest.edits.enabled": true
+   "editor.inlineSuggest.edits.experimental.enabled": true
    ```
 
 2. **Reload the Extension Development Host** (F5)

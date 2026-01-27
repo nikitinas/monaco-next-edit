@@ -32,11 +32,11 @@ export function activate(context: vscode.ExtensionContext) {
     // Check and log VS Code settings for inline completions
     const config = vscode.workspace.getConfiguration('editor');
     const inlineSuggestEnabled = config.get('inlineSuggest.enabled', true);
-    const inlineSuggestEditsEnabled = config.get('inlineSuggest.edits.enabled', false);
+    const inlineSuggestEditsEnabled = config.get('inlineSuggest.edits.experimental.enabled', false);
     
     outputChannel.appendLine(`VS Code Settings:`);
     outputChannel.appendLine(`  editor.inlineSuggest.enabled: ${inlineSuggestEnabled}`);
-    outputChannel.appendLine(`  editor.inlineSuggest.edits.enabled: ${inlineSuggestEditsEnabled} ⚠️ CRITICAL FOR INLINE COMPLETION SUGGESTIONS`);
+    outputChannel.appendLine(`  editor.inlineSuggest.edits.experimental.enabled: ${inlineSuggestEditsEnabled} ⚠️ CRITICAL FOR INLINE COMPLETION SUGGESTIONS`);
     
     if (!inlineSuggestEnabled) {
         outputChannel.appendLine(`  ⚠️  WARNING: Inline suggestions are disabled! Enable with: editor.inlineSuggest.enabled = true`);
@@ -47,9 +47,9 @@ export function activate(context: vscode.ExtensionContext) {
     
     if (!inlineSuggestEditsEnabled) {
         outputChannel.appendLine(`  ❌ CRITICAL: Inline edits are disabled! Inline completion suggestions will NOT work!`);
-        outputChannel.appendLine(`  To enable: Set "editor.inlineSuggest.edits.enabled": true in settings.json`);
+        outputChannel.appendLine(`  To enable: Set "editor.inlineSuggest.experimental.edits.enabled": true in settings.json`);
         vscode.window.showErrorMessage(
-            'Inline Completions Demo: Inline edits are disabled. Enable "editor.inlineSuggest.edits.enabled" in settings for inline completion suggestions to work!'
+            'Inline Completions Demo: Inline edits are disabled. Enable "editor.inlineSuggest.edits.experimental.enabled" in settings for inline completion suggestions to work!'
         );
     }
 

@@ -14,7 +14,7 @@ Suggestions can be accepted with **TAB**, just like regular inline completions.
 ## Requirements
 
 - **VS Code 1.99 or later** - The inlineCompletionsAdditions API is available in stable VS Code 1.99+
-- **Enable inline edits** - Set `editor.inlineSuggest.edits.enabled` to `true` in your VS Code settings
+- **Enable inline edits** - Set `editor.inlineSuggest.edits.experimental.enabled` to `true` in your VS Code settings
 
 ## Installation
 
@@ -32,7 +32,7 @@ Suggestions can be accepted with **TAB**, just like regular inline completions.
 
 4. Enable inline edits in settings:
    - Open Settings (Ctrl+, / Cmd+,)
-   - Search for `inlineSuggest.edits.enabled`
+   - Search for `inlineSuggest.edits.experimental.enabled`
    - Check the box to enable it
 
 ## JSON-Based Suggestions
@@ -348,7 +348,7 @@ The output channel shows:
 1. **Check inline edits are enabled:**
 
    - Open Settings (Ctrl+, / Cmd+,)
-   - Search for `inlineSuggest.edits.enabled`
+   - Search for `inlineSuggest.edits.experimental.enabled`
    - Ensure it's checked
 
 2. **Check inline suggestions are enabled:**
