@@ -1,10 +1,15 @@
 # Inline Completions Demo Extension
 
-A VS Code extension that provides inline completion suggestions using a command-based language. Type commands in your editor to generate inline completion suggestions that can be applied at positions other than the cursor.
+A VS Code extension that provides inline completion suggestions using two methods: a command-based language or JSON configuration files. Generate inline completion suggestions that can be applied at positions other than the cursor.
 
 ## Overview
 
-This extension parses commands from the current line and generates inline completion suggestions based on those commands. Suggestions can be accepted with **TAB**, just like regular inline completions.
+This extension supports two ways to generate inline completion suggestions:
+
+1. **Command-based**: Type commands in your editor to generate suggestions on-the-fly
+2. **JSON-based**: Define suggestions in a `suggestions.json` file in your workspace root
+
+Suggestions can be accepted with **TAB**, just like regular inline completions.
 
 ## Requirements
 
@@ -29,6 +34,111 @@ This extension parses commands from the current line and generates inline comple
    - Open Settings (Ctrl+, / Cmd+,)
    - Search for `inlineSuggest.edits.enabled`
    - Check the box to enable it
+
+## JSON-Based Suggestions
+
+You can define suggestions in a `suggestions.json` file in your workspace root. The extension will automatically load and use these suggestions when the document matches the specified criteria.
+
+### JSON Format
+
+```json
+[
+  {
+    "match": {
+      "text": "function test() {\n",
+      "cursorLine": 2,
+      "file": "app.ts"
+    },
+    "edits": [
+      {
+        "start": { "line": 1, "col": 0 },
+        "end": { "line": 1, "col": 0 },
+        "newText": "  // TODO: implement test\n"
+      }
+    ]
+  }
+]
+```
+
+### Match Criteria
+
+- **`text`** (required): The text pattern to search for in the document
+- **`cursorLine`** (required): The cursor line number relative to where the match text starts (1-based)
+- **`file`** (optional): Exact filename match (short filename with extension, e.g., `"app.ts"`). If omitted, matches all files
+
+### Edit Specification
+
+- **`start`**: Start position `{ line: number, col: number }` - line and column are relative to the match text start
+- **`end`**: End position `{ line: number, col: number }` - line and column are relative to the match text start
+- **`newText`**: The text to insert (use `\n` for line breaks)
+
+### How It Works
+
+1. The extension searches for the `text` pattern in the document
+2. When found, it checks if the cursor is on the expected line relative to the match start
+3. If `file` is specified, it also checks that the current file's name matches exactly
+4. If all criteria match, it creates suggestions from the `edits` array
+5. Line numbers in edits are automatically shifted based on where the match was found
+
+### Example
+
+Given this `suggestions.json`:
+
+```json
+[
+  {
+    "match": {
+      "text": "function test() {\n",
+      "cursorLine": 2,
+      "file": "app.ts"
+    },
+    "edits": [
+      {
+        "start": { "line": 1, "col": 0 },
+        "end": { "line": 1, "col": 0 },
+        "newText": "  // TODO: implement test\n"
+      }
+    ]
+  }
+]
+```
+
+When you:
+1. Open `app.ts`
+2. Type `function test() {` and press Enter (cursor moves to line 2)
+3. The extension will suggest inserting `  // TODO: implement test` on the next line
+
+### Multiple Edits
+
+You can specify multiple edits in a single suggestion:
+
+```json
+{
+  "match": {
+    "text": "var ",
+    "cursorLine": 1,
+    "file": "utils.js"
+  },
+  "edits": [
+    {
+      "start": { "line": 0, "col": 0 },
+      "end": { "line": 0, "col": 4 },
+      "newText": "const "
+    },
+    {
+      "start": { "line": 0, "col": 10 },
+      "end": { "line": 0, "col": 10 },
+      "newText": " = null"
+    }
+  ]
+}
+```
+
+### File Matching
+
+- If `file` is specified, suggestions only apply to files with that exact name (case-sensitive)
+- If `file` is omitted, suggestions apply to all files
+- The filename is matched using the short filename with extension (e.g., `"app.ts"`, not the full path)
 
 ## Command Language Specification
 
@@ -166,7 +276,13 @@ delete 12-13:4
 
 ## Quick Start
 
-### Insert Sample Commands
+### Option 1: JSON-Based Suggestions
+
+1. Copy `suggestions.json.example` to `suggestions.json` in your workspace root
+2. Customize the suggestions for your needs
+3. Open a file and start typing - suggestions will appear automatically when patterns match
+
+### Option 2: Command-Based Suggestions
 
 To quickly learn the command syntax, use the built-in command to insert sample commands:
 
@@ -178,13 +294,36 @@ To quickly learn the command syntax, use the built-in command to insert sample c
 
 ## Usage
 
+### Using JSON-Based Suggestions
+
+1. Create a `suggestions.json` file in your workspace root
+2. Define your suggestions following the JSON format (see example above)
+3. Open a file that matches your suggestion criteria
+4. When the text pattern and cursor position match, suggestions will appear automatically
+5. Press **TAB** to accept the suggestion
+
+**Note:** The JSON file is cached for 5 seconds. Changes to `suggestions.json` will be picked up within 5 seconds.
+
+### Using Command-Based Suggestions
+
 1. Open any file in VS Code
 2. Type a command on a new line (see examples above)
 3. The extension will parse the command and generate an inline completion suggestion
 4. Press **TAB** to accept the suggestion
 
-### Example Workflow
+### Priority
 
+The extension checks JSON-based suggestions first. If no JSON suggestion matches, it falls back to command-based suggestions.
+
+### Example Workflows
+
+**JSON-Based:**
+1. Create `suggestions.json` with a pattern for `function test() {`
+2. Open `app.ts` and type `function test() {` followed by Enter
+3. A suggestion appears automatically
+4. Press **TAB** to accept
+
+**Command-Based:**
 1. Type: `replace "var" with "const" at 1-10`
 2. An inline completion suggestion appears showing all replacements in the range
 3. Press **TAB** to apply all replacements
@@ -223,10 +362,16 @@ The output channel shows:
    - View → Output → "Inline Completions Demo"
    - Look for error messages or warnings
 
-4. **Verify command syntax:**
+4. **Verify command syntax (for command-based):**
    - Ensure the command is typed correctly
    - Check that line numbers are valid (within document bounds)
    - Verify quoted strings are properly formatted
+
+5. **Check JSON suggestions (for JSON-based):**
+   - Verify `suggestions.json` exists in workspace root
+   - Check JSON syntax is valid
+   - Ensure match criteria (text, cursorLine, file) are correct
+   - Verify the cursor is on the expected line relative to the match
 
 ### Common Issues
 
@@ -247,6 +392,14 @@ The output channel shows:
 - Verify the source text exists in the specified range
 - Check for exact matches (case-sensitive)
 - Ensure the text is properly quoted
+
+**"No matching JSON suggestion"**
+
+- Check that `suggestions.json` exists in workspace root
+- Verify the `text` pattern exists in the document
+- Ensure the cursor is on the correct line relative to the match
+- Check that the filename matches exactly (if `file` is specified)
+- Review the output channel for detailed matching information
 
 ## Technical Details
 

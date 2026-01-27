@@ -1,30 +1,7 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 // Type definitions for inlineCompletionsAdditions are in vscode.proposed.inlineCompletionsAdditions.d.ts
 // TypeScript automatically picks them up - no runtime import needed
-
-/**
- * Types for JSON-based suggestions
- */
-interface JsonEdit {
-    start: { line: number; col: number };
-    end: { line: number; col: number };
-    newText: string;
-}
-
-interface JsonSuggestionMatch {
-    text: string;
-    cursorLine: number;
-    file?: string; // Optional exact filename match (short filename with extension, e.g., "app.ts")
-}
-
-interface JsonSuggestion {
-    match: JsonSuggestionMatch;
-    edits: JsonEdit[];
-}
-
-type JsonSuggestions = JsonSuggestion[];
+import { JsonSuggestionsProvider } from './jsonSuggestionsProvider';
 
 /**
  * Demo extension that provides inline completion suggestions using VS Code's InlineCompletionItemProvider API.
@@ -41,7 +18,7 @@ type JsonSuggestions = JsonSuggestion[];
  *    - delete <line>-<line>:<column>
  * 
  * 2. JSON-based: Loads suggestions from suggestions.json in the workspace root.
- *    Format: Array of { match: { text: string, cursorLine: number }, edits: [...] }
+ *    Format: Array of { match: { text: string, cursorAtLine: number }, edits: [...] }
  *    Line numbers in edits are relative to the beginning of the matching text.
  */
 export function activate(context: vscode.ExtensionContext) {
@@ -235,15 +212,229 @@ interface DeleteCommand {
 type ParsedCommand = InsertCommand | ReplaceCommand | DeleteCommand;
 
 /**
+ * Tracks sequential completion items and which ones have been accepted.
+ */
+class SequentialCompletionTracker {
+    // Map: document URI + original match position key -> sequence of items
+    private sequences = new Map<string, {
+        items: Array<{ item: vscode.InlineCompletionItem; range: vscode.Range; text: string }>;
+        acceptedIndices: Set<number>;
+        lastCheckTime: number;
+        originalMatchPosition: vscode.Position;
+    }>();
+
+    private getKey(document: vscode.TextDocument, position: vscode.Position): string {
+        return `${document.uri.toString()}:${position.line}:${position.character}`;
+    }
+
+    /**
+     * Registers a sequence of items for a position.
+     */
+    registerSequence(
+        document: vscode.TextDocument,
+        originalPosition: vscode.Position,
+        items: vscode.InlineCompletionItem[]
+    ): void {
+        const key = this.getKey(document, originalPosition);
+        const sequence = items.map(item => ({
+            item,
+            range: item.range!,
+            text: typeof item.insertText === 'string' ? item.insertText : ''
+        }));
+        
+        this.sequences.set(key, {
+            items: sequence,
+            acceptedIndices: new Set(),
+            lastCheckTime: Date.now(),
+            originalMatchPosition: originalPosition
+        });
+        
+        this.outputChannel.appendLine(`    📋 Registered sequence with ${items.length} items at position ${originalPosition.line + 1}:${originalPosition.character + 1}`);
+    }
+
+    /**
+     * Finds a sequence that might be relevant for the current position.
+     * Checks all sequences for this document and finds one where items might still be pending.
+     */
+    findRelevantSequence(
+        document: vscode.TextDocument,
+        currentPosition: vscode.Position
+    ): { key: string; sequence: { items: Array<{ item: vscode.InlineCompletionItem; range: vscode.Range; text: string }>; acceptedIndices: Set<number>; originalMatchPosition: vscode.Position } } | null {
+        const uri = document.uri.toString();
+        
+        // Check all sequences for this document
+        for (const [key, sequence] of this.sequences.entries()) {
+            if (!key.startsWith(uri + ':')) {
+                continue;
+            }
+
+            // Check which items have been accepted by examining the document
+            for (let i = 0; i < sequence.items.length; i++) {
+                if (sequence.acceptedIndices.has(i)) {
+                    continue; // Already marked as accepted
+                }
+
+                const { range: originalRange, text } = sequence.items[i];
+                
+                // Check if the document contains the accepted text at the expected range
+                // Note: The range might be outdated if the document changed, so we need to check the actual line
+                try {
+                    // Get the current line(s) at the range position
+                    const startLine = document.lineAt(originalRange.start.line);
+                    const endLine = originalRange.end.line === originalRange.start.line 
+                        ? startLine 
+                        : document.lineAt(originalRange.end.line);
+                    
+                    // Create a range that covers the full line(s) to check
+                    // This handles cases where the line length changed after previous edits
+                    const checkRange = new vscode.Range(
+                        new vscode.Position(originalRange.start.line, originalRange.start.character),
+                        new vscode.Position(originalRange.end.line, endLine.text.length)
+                    );
+                    
+                    const currentText = document.getText(checkRange);
+                    // Normalize both texts for comparison (handle EOL differences)
+                    const normalizedCurrent = currentText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd();
+                    const normalizedExpected = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trimEnd();
+                    
+                    this.outputChannel.appendLine(`    🔍 Checking item ${i + 1}: range=${checkRange.start.line + 1}:${checkRange.start.character}-${checkRange.end.line + 1}:${checkRange.end.character}, current="${normalizedCurrent.substring(0, 50)}${normalizedCurrent.length > 50 ? '...' : ''}", expected="${normalizedExpected.substring(0, 50)}${normalizedExpected.length > 50 ? '...' : ''}"`);
+                    
+                    if (normalizedCurrent === normalizedExpected) {
+                        // This item has been accepted
+                        sequence.acceptedIndices.add(i);
+                        this.outputChannel.appendLine(`    ✅ Item ${i + 1} in sequence has been accepted`);
+                    } else {
+                        this.outputChannel.appendLine(`    ⏳ Item ${i + 1} not yet accepted (texts don't match, length: current=${normalizedCurrent.length}, expected=${normalizedExpected.length})`);
+                    }
+                } catch (e) {
+                    this.outputChannel.appendLine(`    ⚠️  Error checking item ${i + 1}: ${e}`);
+                }
+            }
+
+            // Check if there are any unaccepted items
+            const hasUnaccepted = sequence.items.some((_, i) => !sequence.acceptedIndices.has(i));
+            if (hasUnaccepted) {
+                // If there are unaccepted items, check if current position is near any of the item ranges
+                // Be lenient - check if position is within 10 lines of any item range
+                for (const item of sequence.items) {
+                    const lineDistance = Math.abs(item.range.start.line - currentPosition.line);
+                    if (item.range.contains(currentPosition) || lineDistance <= 10) {
+                        this.outputChannel.appendLine(`    🔍 Found relevant sequence: ${sequence.items.length} items, ${sequence.acceptedIndices.size} accepted, position distance: ${lineDistance}`);
+                        return { key, sequence };
+                    }
+                }
+                // If no item range is close, but we're in the same general area (within 20 lines of original match), still return it
+                const distanceFromOriginal = Math.abs(sequence.originalMatchPosition.line - currentPosition.line);
+                if (distanceFromOriginal <= 20) {
+                    this.outputChannel.appendLine(`    🔍 Found relevant sequence by original position: ${sequence.items.length} items, ${sequence.acceptedIndices.size} accepted, distance from original: ${distanceFromOriginal}`);
+                    return { key, sequence };
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Gets the next item in a sequence that hasn't been accepted yet.
+     */
+    getNextItem(
+        document: vscode.TextDocument,
+        currentPosition: vscode.Position
+    ): vscode.InlineCompletionItem | undefined {
+        const relevant = this.findRelevantSequence(document, currentPosition);
+        if (!relevant) {
+            return undefined;
+        }
+
+        const { sequence } = relevant;
+        
+        // Find the first unaccepted item
+        for (let i = 0; i < sequence.items.length; i++) {
+            if (!sequence.acceptedIndices.has(i)) {
+                this.outputChannel.appendLine(`    🔄 Returning item ${i + 1} of ${sequence.items.length} from sequence`);
+                return sequence.items[i].item;
+            }
+        }
+
+        // All items accepted - clean up
+        this.sequences.delete(relevant.key);
+        return undefined;
+    }
+
+    /**
+     * Clears sequences for a document (called when document changes significantly).
+     */
+    clearForDocument(document: vscode.TextDocument): void {
+        const uri = document.uri.toString();
+        let clearedCount = 0;
+        for (const key of this.sequences.keys()) {
+            if (key.startsWith(uri + ':')) {
+                this.sequences.delete(key);
+                clearedCount++;
+            }
+        }
+        if (clearedCount > 0) {
+            this.outputChannel.appendLine(`    🧹 Cleared ${clearedCount} sequence(s) for document`);
+        }
+    }
+
+    /**
+     * Checks if there are any active sequences for a document.
+     */
+    hasActiveSequences(document: vscode.TextDocument): boolean {
+        const uri = document.uri.toString();
+        for (const key of this.sequences.keys()) {
+            if (key.startsWith(uri + ':')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the current position is near any pending (unaccepted) edit in active sequences.
+     */
+    isPositionNearPendingEdit(document: vscode.TextDocument, position: vscode.Position): boolean {
+        const uri = document.uri.toString();
+        for (const [key, sequence] of this.sequences.entries()) {
+            if (!key.startsWith(uri + ':')) {
+                continue;
+            }
+
+            // Check if position is near any unaccepted item
+            for (let i = 0; i < sequence.items.length; i++) {
+                if (sequence.acceptedIndices.has(i)) {
+                    continue; // Skip accepted items
+                }
+
+                const item = sequence.items[i];
+                const lineDistance = Math.abs(item.range.start.line - position.line);
+                if (item.range.contains(position) || lineDistance <= 10) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    constructor(private outputChannel: vscode.OutputChannel) {}
+}
+
+/**
  * InlineCompletionItemProvider that parses commands from the current line
  * and generates suggestions based on those commands, or loads suggestions from suggestions.json.
  */
 class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvider {
-    private jsonSuggestionsCache: JsonSuggestions | null = null;
-    private jsonSuggestionsCacheTime: number = 0;
-    private readonly CACHE_TTL = 5000; // Cache for 5 seconds
+    private jsonSuggestionsProvider: JsonSuggestionsProvider;
+    private sequentialTracker: SequentialCompletionTracker;
+    private lastDocumentUri: vscode.Uri | undefined;
+    private lastPosition: vscode.Position | undefined;
 
-    constructor(private outputChannel: vscode.OutputChannel) { }
+    constructor(private outputChannel: vscode.OutputChannel) {
+        this.jsonSuggestionsProvider = new JsonSuggestionsProvider(outputChannel);
+        this.sequentialTracker = new SequentialCompletionTracker(outputChannel);
+    }
 
     async provideInlineCompletionItems(
         document: vscode.TextDocument,
@@ -262,32 +453,151 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         this.outputChannel.appendLine(`[${timestamp}] provideInlineCompletionItems CALLED`);
         this.outputChannel.appendLine(`  File: ${fileName}`);
         this.outputChannel.appendLine(`  Position: Line ${position.line + 1}, Column ${position.character + 1}`);
+        this.outputChannel.appendLine(`  Context triggerKind: ${context.triggerKind} (${context.triggerKind === 0 ? 'Automatic' : context.triggerKind === 1 ? 'Explicit' : 'Unknown'})`);
+        this.outputChannel.appendLine(`  SelectedCompletionInfo: ${context.selectedCompletionInfo ? JSON.stringify({
+            range: `Line ${context.selectedCompletionInfo.range.start.line + 1}:${context.selectedCompletionInfo.range.start.character} to ${context.selectedCompletionInfo.range.end.line + 1}:${context.selectedCompletionInfo.range.end.character}`,
+            text: context.selectedCompletionInfo.text
+        }) : 'null'}`);
+        
+        // Log current line and surrounding context
+        const currentLineObj = document.lineAt(position.line);
+        this.outputChannel.appendLine(`  Current line (${position.line + 1}): "${currentLineObj.text}"`);
+        if (position.line > 0) {
+            this.outputChannel.appendLine(`  Previous line (${position.line}): "${document.lineAt(position.line - 1).text}"`);
+        }
+        if (position.line < document.lineCount - 1) {
+            this.outputChannel.appendLine(`  Next line (${position.line + 2}): "${document.lineAt(position.line + 1).text}"`);
+        }
 
-        // First, try to load suggestions from suggestions.json
-        const jsonSuggestions = await this.loadJsonSuggestions();
+        // First, check if we have a sequential sequence in progress
+        // This should be checked BEFORE clearing sequences to avoid clearing when user moves to accept a suggestion
+        const nextItem = this.sequentialTracker.getNextItem(document, position);
+        if (nextItem) {
+            this.outputChannel.appendLine(`  🔄 Sequential completion: Returning next item in sequence`);
+            const completionList = new vscode.InlineCompletionList([nextItem]);
+            // @ts-ignore
+            try {
+                (completionList as any).enableForwardStability = true;
+            } catch (e) {
+                // Ignore
+            }
+            this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
+            this.lastDocumentUri = document.uri;
+            this.lastPosition = position;
+            return completionList;
+        }
+        
+        // Check if user has moved significantly AND the new position is not near any pending edits
+        // Only clear sequences if user moved far away AND there are no relevant sequences
+        if (this.lastDocumentUri && this.lastDocumentUri.toString() === document.uri.toString()) {
+            if (this.lastPosition && Math.abs(this.lastPosition.line - position.line) > 5) {
+                // Check if there are active sequences and if the new position is near any pending edit
+                const hasActiveSequences = this.sequentialTracker.hasActiveSequences(document);
+                if (hasActiveSequences) {
+                    // Check if position is near any pending edit location (within 10 lines)
+                    const isNearPendingEdit = this.sequentialTracker.isPositionNearPendingEdit(document, position);
+                    if (!isNearPendingEdit) {
+                        // User moved far away and not near any pending edit - clear sequences
+                        this.outputChannel.appendLine(`  🧹 Clearing sequences: user moved ${Math.abs(this.lastPosition.line - position.line)} lines away and not near any pending edit`);
+                        this.sequentialTracker.clearForDocument(document);
+                    } else {
+                        this.outputChannel.appendLine(`  ✅ User moved but is near a pending edit - keeping sequences`);
+                    }
+                }
+            }
+        }
+        this.lastDocumentUri = document.uri;
+        this.lastPosition = position;
+        
+        // If we have active sequences but none match the current position, clear them
+        // This happens when user types something that doesn't match any expected sequence
+        const hasActiveSequences = this.sequentialTracker.hasActiveSequences(document);
+        if (hasActiveSequences) {
+            this.outputChannel.appendLine(`  🧹 Clearing sequences: no matching sequence found at current position`);
+            this.sequentialTracker.clearForDocument(document);
+        }
+
+        // Then, try to load suggestions from suggestions.json
+        const jsonSuggestions = await this.jsonSuggestionsProvider.loadJsonSuggestions();
         if (jsonSuggestions) {
-            const jsonSuggestion = this.findMatchingJsonSuggestion(document, position, jsonSuggestions);
+            const jsonSuggestion = this.jsonSuggestionsProvider.findMatchingJsonSuggestion(document, position, jsonSuggestions);
+            
+            // If we have active sequences but found a new matching suggestion (different from the sequence),
+            // it means user typed something new - clear old sequences
+            if (jsonSuggestion && this.sequentialTracker.hasActiveSequences(document)) {
+                this.outputChannel.appendLine(`  🧹 Clearing sequences: new suggestion match found (user typed something different)`);
+                this.sequentialTracker.clearForDocument(document);
+            }
+            
             if (jsonSuggestion) {
                 this.outputChannel.appendLine(`  ✅ Found matching JSON suggestion`);
-                const suggestions = this.createSuggestionsFromJson(document, position, jsonSuggestion);
+                
+                const suggestions = this.jsonSuggestionsProvider.createSuggestionsFromJson(document, position, jsonSuggestion);
                 if (suggestions && suggestions.length > 0) {
                     this.outputChannel.appendLine(`  🎉 Created ${suggestions.length} suggestion(s) from JSON`);
+                    
+                    // Always register as a sequence if we have multiple items
+                    // This allows sequential acceptance even if items are on adjacent lines
+                    if (suggestions.length > 1) {
+                        this.outputChannel.appendLine(`  📋 Registering ${suggestions.length} items as sequential completion sequence`);
+                        this.sequentialTracker.registerSequence(document, position, suggestions);
+                    }
+                    
                     suggestions.forEach((s, i) => {
                         this.outputChannel.appendLine(`    Suggestion ${i + 1}:`);
                         this.logSuggestionDetails(s, 'json');
                     });
-                    this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
-                    const completionList = new vscode.InlineCompletionList(suggestions);
+                    
+                    // For sequential completions, return only the first item initially
+                    // The sequential tracker will handle returning subsequent items
+                    const itemsToReturn = suggestions.length > 1 ? [suggestions[0]] : suggestions;
+                    
+                    // Log what we're returning
+                    this.outputChannel.appendLine(`  📦 Creating InlineCompletionList...`);
+                    this.outputChannel.appendLine(`    Suggestions array order:`);
+                    suggestions.forEach((s, idx) => {
+                        const range = s.range ? `Line ${s.range.start.line + 1}:${s.range.start.character}-${s.range.end.line + 1}:${s.range.end.character}` : 'no range';
+                        this.outputChannel.appendLine(`      [${idx}]: ${range}`);
+                    });
+                    this.outputChannel.appendLine(`    Returning ${itemsToReturn.length} item(s)${suggestions.length > 1 ? ` (first of ${suggestions.length} sequential items)` : ''}`);
+                    if (itemsToReturn.length > 0 && itemsToReturn[0].range) {
+                        this.outputChannel.appendLine(`    First item to return: Line ${itemsToReturn[0].range.start.line + 1}:${itemsToReturn[0].range.start.character}-${itemsToReturn[0].range.end.line + 1}:${itemsToReturn[0].range.end.character}`);
+                    }
+                    const completionList = new vscode.InlineCompletionList(itemsToReturn);
+                    this.outputChannel.appendLine(`    CompletionList.items.length: ${completionList.items.length}`);
+                    this.outputChannel.appendLine(`    CompletionList.items: ${JSON.stringify(completionList.items.map((item, idx) => ({
+                        index: idx,
+                        hasRange: !!item.range,
+                        range: item.range ? `Line ${item.range.start.line + 1}:${item.range.start.character} to ${item.range.end.line + 1}:${item.range.end.character}` : null,
+                        hasInsertText: !!item.insertText,
+                        insertTextType: typeof item.insertText,
+                        insertTextLength: typeof item.insertText === 'string' ? item.insertText.length : 'N/A',
+                        isInlineEdit: item.isInlineEdit,
+                        hasShowRange: !!item.showRange
+                    })))}`);
+                    
                     // @ts-ignore - enableForwardStability is not in the type definitions but exists in the API
-                    completionList.enableForwardStability = true;
+                    try {
+                        (completionList as any).enableForwardStability = true;
+                        this.outputChannel.appendLine(`    enableForwardStability: ${(completionList as any).enableForwardStability}`);
+                    } catch (e) {
+                        this.outputChannel.appendLine(`    ⚠️  Could not set enableForwardStability: ${e}`);
+                    }
+                    this.outputChannel.appendLine(`  ✅ Returning InlineCompletionList with ${completionList.items.length} items`);
+                    if (suggestions.length > 1) {
+                        this.outputChannel.appendLine(`  💡 Sequential mode: Accept this item (TAB) to see the next one`);
+                    }
+                    this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
                     return completionList;
+                } else {
+                    this.outputChannel.appendLine(`  ⚠️  No suggestions created (suggestions is ${suggestions ? 'empty array' : 'null/undefined'})`);
                 }
             }
         }
 
         // Fall back to command-based suggestions
-        const currentLine = document.lineAt(position.line);
-        const lineText = currentLine.text;
+        const currentLineForCommand = document.lineAt(position.line);
+        const lineText = currentLineForCommand.text;
         
         this.outputChannel.appendLine(`  Current line: "${lineText}"`);
 
@@ -317,205 +627,6 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         // @ts-ignore - enableForwardStability is not in the type definitions but exists in the API
         completionList.enableForwardStability = true;
         return completionList;
-    }
-
-    /**
-     * Loads suggestions.json from the workspace root.
-     * Uses caching to avoid reading the file on every request.
-     */
-    private async loadJsonSuggestions(): Promise<JsonSuggestions | null> {
-        const now = Date.now();
-        
-        // Check cache first
-        if (this.jsonSuggestionsCache && (now - this.jsonSuggestionsCacheTime) < this.CACHE_TTL) {
-            return this.jsonSuggestionsCache;
-        }
-
-        try {
-            const workspaceFolders = vscode.workspace.workspaceFolders;
-            if (!workspaceFolders || workspaceFolders.length === 0) {
-                return null;
-            }
-
-            // Try each workspace folder
-            for (const folder of workspaceFolders) {
-                const suggestionsPath = path.join(folder.uri.fsPath, 'suggestions.json');
-                
-                if (fs.existsSync(suggestionsPath)) {
-                    const fileContent = fs.readFileSync(suggestionsPath, 'utf-8');
-                    const suggestions = JSON.parse(fileContent) as JsonSuggestions;
-                    
-                    // Validate structure
-                    if (Array.isArray(suggestions)) {
-                        this.jsonSuggestionsCache = suggestions;
-                        this.jsonSuggestionsCacheTime = now;
-                        this.outputChannel.appendLine(`  📄 Loaded ${suggestions.length} suggestion(s) from suggestions.json`);
-                        return suggestions;
-                    } else {
-                        this.outputChannel.appendLine(`  ⚠️  suggestions.json is not an array`);
-                        return null;
-                    }
-                }
-            }
-
-            return null;
-        } catch (error) {
-            this.outputChannel.appendLine(`  ❌ Error loading suggestions.json: ${error}`);
-            return null;
-        }
-    }
-
-    /**
-     * Checks if a filename matches exactly (case-sensitive).
-     * If no filename specified, matches all files.
-     */
-    private matchesFilename(filename: string, expectedFilename?: string): boolean {
-        // If no filename specified, match all files
-        if (!expectedFilename) {
-            return true;
-        }
-
-        // Exact match (case-sensitive)
-        return filename === expectedFilename;
-    }
-
-    /**
-     * Finds a matching JSON suggestion based on filename, text, and cursor line.
-     * Returns the first matching suggestion.
-     */
-    private findMatchingJsonSuggestion(
-        document: vscode.TextDocument,
-        position: vscode.Position,
-        suggestions: JsonSuggestions
-    ): JsonSuggestion | null {
-        const documentText = document.getText();
-        const cursorLine = position.line; // 0-based line number
-        const fileName = path.basename(document.fileName);
-
-        for (const suggestion of suggestions) {
-            const matchText = suggestion.match.text;
-            const expectedCursorLine = suggestion.match.cursorLine - 1; // Convert to 0-based
-            const expectedFile = suggestion.match.file;
-
-            // Check filename first (if specified)
-            if (!this.matchesFilename(fileName, expectedFile)) {
-                continue;
-            }
-
-            // Find all occurrences of the match text in the document
-            let searchIndex = 0;
-            while (true) {
-                const matchIndex = documentText.indexOf(matchText, searchIndex);
-                if (matchIndex === -1) {
-                    break;
-                }
-
-                // Calculate which line this match starts on
-                const textBeforeMatch = documentText.substring(0, matchIndex);
-                const matchStartLine = (textBeforeMatch.match(/\n/g) || []).length;
-
-                // Calculate the expected cursor line relative to the match start
-                const actualCursorLine = matchStartLine + expectedCursorLine;
-
-                // Check if cursor is on the expected line relative to the match
-                if (cursorLine === actualCursorLine) {
-                    const filenameInfo = expectedFile ? `, file="${expectedFile}"` : '';
-                    this.outputChannel.appendLine(`    ✅ Match found: text="${matchText.substring(0, 50)}${matchText.length > 50 ? '...' : ''}", cursorLine=${cursorLine + 1}, matchStartLine=${matchStartLine + 1}${filenameInfo}`);
-                    return suggestion;
-                }
-
-                searchIndex = matchIndex + 1;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Creates inline completion suggestions from JSON edits.
-     * Shifts line numbers based on where the match text was found.
-     */
-    private createSuggestionsFromJson(
-        document: vscode.TextDocument,
-        position: vscode.Position,
-        suggestion: JsonSuggestion
-    ): vscode.InlineCompletionItem[] {
-        const documentText = document.getText();
-        const matchText = suggestion.match.text;
-        const expectedCursorLine = suggestion.match.cursorLine - 1; // Convert to 0-based
-
-        // Find the match that corresponds to the current cursor position
-        let searchIndex = 0;
-        let matchStartLine = -1;
-
-        while (true) {
-            const matchIndex = documentText.indexOf(matchText, searchIndex);
-            if (matchIndex === -1) {
-                break;
-            }
-
-            const textBeforeMatch = documentText.substring(0, matchIndex);
-            const calculatedMatchStartLine = (textBeforeMatch.match(/\n/g) || []).length;
-            const actualCursorLine = calculatedMatchStartLine + expectedCursorLine;
-
-            if (position.line === actualCursorLine) {
-                matchStartLine = calculatedMatchStartLine;
-                break;
-            }
-
-            searchIndex = matchIndex + 1;
-        }
-
-        if (matchStartLine === -1) {
-            this.outputChannel.appendLine(`    ❌ Could not find match position for cursor`);
-            return [];
-        }
-
-        const suggestions: vscode.InlineCompletionItem[] = [];
-
-        for (const edit of suggestion.edits) {
-            // Shift line numbers relative to match start
-            const actualStartLine = matchStartLine + edit.start.line;
-            const actualEndLine = matchStartLine + edit.end.line;
-
-            // Validate line numbers
-            if (actualStartLine < 0 || actualEndLine >= document.lineCount || actualStartLine > actualEndLine) {
-                this.outputChannel.appendLine(`    ⚠️  Skipping edit: invalid line range ${actualStartLine + 1}-${actualEndLine + 1}`);
-                continue;
-            }
-
-            // Get the actual line to validate column
-            const startLineObj = document.lineAt(actualStartLine);
-            const endLineObj = document.lineAt(actualEndLine);
-
-            const startCol = Math.min(edit.start.col, startLineObj.text.length);
-            const endCol = actualEndLine === actualStartLine 
-                ? Math.min(edit.end.col, endLineObj.text.length)
-                : endLineObj.text.length;
-
-            const range = new vscode.Range(
-                new vscode.Position(actualStartLine, startCol),
-                new vscode.Position(actualEndLine, endCol)
-            );
-
-            // Normalize EOL sequences in the replacement text
-            const normalizedText = this.normalizeEOL(edit.newText, document);
-
-            const showRange = new vscode.Range(
-                0,
-                0,
-                document.lineCount - 1,
-                Number.MAX_SAFE_INTEGER
-            );
-
-            const item = new vscode.InlineCompletionItem(normalizedText, range);
-            item.isInlineEdit = true;
-            item.showRange = showRange;
-
-            suggestions.push(item);
-        }
-
-        return suggestions;
     }
 
     /**
@@ -1216,5 +1327,60 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         }
         this.outputChannel.appendLine(`    📝 Text: "${textPreview}"`);
         this.outputChannel.appendLine(`    📏 Type: ${type}`);
+    }
+
+    /**
+     * Called when an item is partially accepted.
+     * This helps us track which items in a sequence have been accepted.
+     */
+    handlePartialAccept?(
+        completions: vscode.InlineCompletionList,
+        item: vscode.InlineCompletionItem,
+        acceptedCharacters: number,
+        info: any
+    ): void {
+        this.outputChannel.appendLine(`\n${'='.repeat(80)}`);
+        this.outputChannel.appendLine(`[${new Date().toISOString()}] handlePartialAccept CALLED`);
+        this.outputChannel.appendLine(`  Accepted characters: ${acceptedCharacters}`);
+        this.outputChannel.appendLine(`  Item range: ${item.range ? `Line ${item.range.start.line + 1}:${item.range.start.character} to ${item.range.end.line + 1}:${item.range.end.character}` : 'null'}`);
+        this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
+        
+        // Note: Full acceptance detection happens in provideInlineCompletionItems
+        // by checking document state, since there's no handleFullAccept callback
+    }
+
+    /**
+     * Called when an item is shown.
+     */
+    handleItemDidShow?(
+        completions: vscode.InlineCompletionList,
+        item: vscode.InlineCompletionItem,
+        updatedInsertText: string
+    ): void {
+        // Can be used for analytics or logging
+    }
+
+    /**
+     * Called when an item is rejected.
+     */
+    handleRejection?(
+        completions: vscode.InlineCompletionList,
+        item: vscode.InlineCompletionItem
+    ): void {
+        this.outputChannel.appendLine(`\n${'='.repeat(80)}`);
+        this.outputChannel.appendLine(`[${new Date().toISOString()}] handleRejection CALLED`);
+        this.outputChannel.appendLine(`  Item range: ${item.range ? `Line ${item.range.start.line + 1}:${item.range.start.character} to ${item.range.end.line + 1}:${item.range.end.character}` : 'null'}`);
+        this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
+        
+        // Clear all sequences when a suggestion is rejected
+        // We'll clear sequences for the last document we worked with
+        if (this.lastDocumentUri) {
+            // We need to get the document - use active editor as fallback
+            const activeEditor = vscode.window.activeTextEditor;
+            if (activeEditor && activeEditor.document.uri.toString() === this.lastDocumentUri.toString()) {
+                this.outputChannel.appendLine(`  🧹 Clearing all sequences due to rejection`);
+                this.sequentialTracker.clearForDocument(activeEditor.document);
+            }
+        }
     }
 }

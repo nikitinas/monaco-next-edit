@@ -7,7 +7,7 @@
       "script": "compile",
       "group": {
         "kind": "build",
-        "isDefault": true
+        "isDefault": false
       },
       "presentation": {
         "reveal": "silent",
@@ -22,10 +22,16 @@
       "type": "npm",
       "script": "watch",
       "isBackground": true,
-      "group": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "presentation": {
         "reveal": "always",
-        "panel": "dedicated"
+        "panel": "dedicated",
+        "showReuseMessage": false,
+        "clear": true,
+        "focus": false
       },
       "problemMatcher": "$tsc-watch"
     }
