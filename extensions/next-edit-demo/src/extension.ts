@@ -1,19 +1,48 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 // Type definitions for inlineCompletionsAdditions are in vscode.proposed.inlineCompletionsAdditions.d.ts
 // TypeScript automatically picks them up - no runtime import needed
 
 /**
+ * Types for JSON-based suggestions
+ */
+interface JsonEdit {
+    start: { line: number; col: number };
+    end: { line: number; col: number };
+    newText: string;
+}
+
+interface JsonSuggestionMatch {
+    text: string;
+    cursorLine: number;
+    file?: string; // Optional exact filename match (short filename with extension, e.g., "app.ts")
+}
+
+interface JsonSuggestion {
+    match: JsonSuggestionMatch;
+    edits: JsonEdit[];
+}
+
+type JsonSuggestions = JsonSuggestion[];
+
+/**
  * Demo extension that provides inline completion suggestions using VS Code's InlineCompletionItemProvider API.
  * 
- * This extension parses commands from the current line and generates inline completion suggestions.
- * Supported commands:
- * - insert <text> at <line>[:<column>] (column defaults to 0 if omitted)
- * - replace <line>[-<line>] with "<text>" (replace entire lines)
- * - replace "<src>" with "<dst>" at <line>[-<line>] (column not needed)
- * - delete <line> (delete entire line)
- * - delete <line>-<line> (delete entire lines)
- * - delete "<text>" at <line>:<start>-<end>
- * - delete <line>-<line>:<column>
+ * This extension supports two ways to generate suggestions:
+ * 1. Command-based: Parses commands from the current line and generates inline completion suggestions.
+ *    Supported commands:
+ *    - insert <text> at <line>[:<column>] (column defaults to 0 if omitted)
+ *    - replace <line>[-<line>] with "<text>" (replace entire lines)
+ *    - replace "<src>" with "<dst>" at <line>[-<line>] (column not needed)
+ *    - delete <line> (delete entire line)
+ *    - delete <line>-<line> (delete entire lines)
+ *    - delete "<text>" at <line>:<start>-<end>
+ *    - delete <line>-<line>:<column>
+ * 
+ * 2. JSON-based: Loads suggestions from suggestions.json in the workspace root.
+ *    Format: Array of { match: { text: string, cursorLine: number }, edits: [...] }
+ *    Line numbers in edits are relative to the beginning of the matching text.
  */
 export function activate(context: vscode.ExtensionContext) {
     console.log('Inline Completions Demo extension is now active!');
@@ -64,8 +93,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     outputChannel.appendLine('Extension setup complete');
     outputChannel.appendLine('');
-    outputChannel.appendLine('✅ Command-based Inline Completion Suggestions');
-    outputChannel.appendLine('Supported commands:');
+    outputChannel.appendLine('✅ Inline Completion Suggestions');
+    outputChannel.appendLine('');
+    outputChannel.appendLine('Two modes available:');
+    outputChannel.appendLine('1. JSON-based: Create suggestions.json in workspace root');
+    outputChannel.appendLine('2. Command-based: Type commands in the editor');
+    outputChannel.appendLine('');
+    outputChannel.appendLine('Command-based commands:');
     outputChannel.appendLine('  - insert <text> at <line>[:<column>] (column defaults to 0 if omitted)');
     outputChannel.appendLine('  - replace <line>[-<line>] with "<text>" (replace entire lines)');
     outputChannel.appendLine('  - replace "<src>" with "<dst>" [at|in] <line>[-<line>] (replaces all by default)');
@@ -202,9 +236,13 @@ type ParsedCommand = InsertCommand | ReplaceCommand | DeleteCommand;
 
 /**
  * InlineCompletionItemProvider that parses commands from the current line
- * and generates suggestions based on those commands.
+ * and generates suggestions based on those commands, or loads suggestions from suggestions.json.
  */
 class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvider {
+    private jsonSuggestionsCache: JsonSuggestions | null = null;
+    private jsonSuggestionsCacheTime: number = 0;
+    private readonly CACHE_TTL = 5000; // Cache for 5 seconds
+
     constructor(private outputChannel: vscode.OutputChannel) { }
 
     async provideInlineCompletionItems(
@@ -225,7 +263,29 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         this.outputChannel.appendLine(`  File: ${fileName}`);
         this.outputChannel.appendLine(`  Position: Line ${position.line + 1}, Column ${position.character + 1}`);
 
-        // Get the current line and parse it for commands
+        // First, try to load suggestions from suggestions.json
+        const jsonSuggestions = await this.loadJsonSuggestions();
+        if (jsonSuggestions) {
+            const jsonSuggestion = this.findMatchingJsonSuggestion(document, position, jsonSuggestions);
+            if (jsonSuggestion) {
+                this.outputChannel.appendLine(`  ✅ Found matching JSON suggestion`);
+                const suggestions = this.createSuggestionsFromJson(document, position, jsonSuggestion);
+                if (suggestions && suggestions.length > 0) {
+                    this.outputChannel.appendLine(`  🎉 Created ${suggestions.length} suggestion(s) from JSON`);
+                    suggestions.forEach((s, i) => {
+                        this.outputChannel.appendLine(`    Suggestion ${i + 1}:`);
+                        this.logSuggestionDetails(s, 'json');
+                    });
+                    this.outputChannel.appendLine(`${'='.repeat(80)}\n`);
+                    const completionList = new vscode.InlineCompletionList(suggestions);
+                    // @ts-ignore - enableForwardStability is not in the type definitions but exists in the API
+                    completionList.enableForwardStability = true;
+                    return completionList;
+                }
+            }
+        }
+
+        // Fall back to command-based suggestions
         const currentLine = document.lineAt(position.line);
         const lineText = currentLine.text;
         
@@ -257,6 +317,205 @@ class CommandBasedCompletionProvider implements vscode.InlineCompletionItemProvi
         // @ts-ignore - enableForwardStability is not in the type definitions but exists in the API
         completionList.enableForwardStability = true;
         return completionList;
+    }
+
+    /**
+     * Loads suggestions.json from the workspace root.
+     * Uses caching to avoid reading the file on every request.
+     */
+    private async loadJsonSuggestions(): Promise<JsonSuggestions | null> {
+        const now = Date.now();
+        
+        // Check cache first
+        if (this.jsonSuggestionsCache && (now - this.jsonSuggestionsCacheTime) < this.CACHE_TTL) {
+            return this.jsonSuggestionsCache;
+        }
+
+        try {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                return null;
+            }
+
+            // Try each workspace folder
+            for (const folder of workspaceFolders) {
+                const suggestionsPath = path.join(folder.uri.fsPath, 'suggestions.json');
+                
+                if (fs.existsSync(suggestionsPath)) {
+                    const fileContent = fs.readFileSync(suggestionsPath, 'utf-8');
+                    const suggestions = JSON.parse(fileContent) as JsonSuggestions;
+                    
+                    // Validate structure
+                    if (Array.isArray(suggestions)) {
+                        this.jsonSuggestionsCache = suggestions;
+                        this.jsonSuggestionsCacheTime = now;
+                        this.outputChannel.appendLine(`  📄 Loaded ${suggestions.length} suggestion(s) from suggestions.json`);
+                        return suggestions;
+                    } else {
+                        this.outputChannel.appendLine(`  ⚠️  suggestions.json is not an array`);
+                        return null;
+                    }
+                }
+            }
+
+            return null;
+        } catch (error) {
+            this.outputChannel.appendLine(`  ❌ Error loading suggestions.json: ${error}`);
+            return null;
+        }
+    }
+
+    /**
+     * Checks if a filename matches exactly (case-sensitive).
+     * If no filename specified, matches all files.
+     */
+    private matchesFilename(filename: string, expectedFilename?: string): boolean {
+        // If no filename specified, match all files
+        if (!expectedFilename) {
+            return true;
+        }
+
+        // Exact match (case-sensitive)
+        return filename === expectedFilename;
+    }
+
+    /**
+     * Finds a matching JSON suggestion based on filename, text, and cursor line.
+     * Returns the first matching suggestion.
+     */
+    private findMatchingJsonSuggestion(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        suggestions: JsonSuggestions
+    ): JsonSuggestion | null {
+        const documentText = document.getText();
+        const cursorLine = position.line; // 0-based line number
+        const fileName = path.basename(document.fileName);
+
+        for (const suggestion of suggestions) {
+            const matchText = suggestion.match.text;
+            const expectedCursorLine = suggestion.match.cursorLine - 1; // Convert to 0-based
+            const expectedFile = suggestion.match.file;
+
+            // Check filename first (if specified)
+            if (!this.matchesFilename(fileName, expectedFile)) {
+                continue;
+            }
+
+            // Find all occurrences of the match text in the document
+            let searchIndex = 0;
+            while (true) {
+                const matchIndex = documentText.indexOf(matchText, searchIndex);
+                if (matchIndex === -1) {
+                    break;
+                }
+
+                // Calculate which line this match starts on
+                const textBeforeMatch = documentText.substring(0, matchIndex);
+                const matchStartLine = (textBeforeMatch.match(/\n/g) || []).length;
+
+                // Calculate the expected cursor line relative to the match start
+                const actualCursorLine = matchStartLine + expectedCursorLine;
+
+                // Check if cursor is on the expected line relative to the match
+                if (cursorLine === actualCursorLine) {
+                    const filenameInfo = expectedFile ? `, file="${expectedFile}"` : '';
+                    this.outputChannel.appendLine(`    ✅ Match found: text="${matchText.substring(0, 50)}${matchText.length > 50 ? '...' : ''}", cursorLine=${cursorLine + 1}, matchStartLine=${matchStartLine + 1}${filenameInfo}`);
+                    return suggestion;
+                }
+
+                searchIndex = matchIndex + 1;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Creates inline completion suggestions from JSON edits.
+     * Shifts line numbers based on where the match text was found.
+     */
+    private createSuggestionsFromJson(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        suggestion: JsonSuggestion
+    ): vscode.InlineCompletionItem[] {
+        const documentText = document.getText();
+        const matchText = suggestion.match.text;
+        const expectedCursorLine = suggestion.match.cursorLine - 1; // Convert to 0-based
+
+        // Find the match that corresponds to the current cursor position
+        let searchIndex = 0;
+        let matchStartLine = -1;
+
+        while (true) {
+            const matchIndex = documentText.indexOf(matchText, searchIndex);
+            if (matchIndex === -1) {
+                break;
+            }
+
+            const textBeforeMatch = documentText.substring(0, matchIndex);
+            const calculatedMatchStartLine = (textBeforeMatch.match(/\n/g) || []).length;
+            const actualCursorLine = calculatedMatchStartLine + expectedCursorLine;
+
+            if (position.line === actualCursorLine) {
+                matchStartLine = calculatedMatchStartLine;
+                break;
+            }
+
+            searchIndex = matchIndex + 1;
+        }
+
+        if (matchStartLine === -1) {
+            this.outputChannel.appendLine(`    ❌ Could not find match position for cursor`);
+            return [];
+        }
+
+        const suggestions: vscode.InlineCompletionItem[] = [];
+
+        for (const edit of suggestion.edits) {
+            // Shift line numbers relative to match start
+            const actualStartLine = matchStartLine + edit.start.line;
+            const actualEndLine = matchStartLine + edit.end.line;
+
+            // Validate line numbers
+            if (actualStartLine < 0 || actualEndLine >= document.lineCount || actualStartLine > actualEndLine) {
+                this.outputChannel.appendLine(`    ⚠️  Skipping edit: invalid line range ${actualStartLine + 1}-${actualEndLine + 1}`);
+                continue;
+            }
+
+            // Get the actual line to validate column
+            const startLineObj = document.lineAt(actualStartLine);
+            const endLineObj = document.lineAt(actualEndLine);
+
+            const startCol = Math.min(edit.start.col, startLineObj.text.length);
+            const endCol = actualEndLine === actualStartLine 
+                ? Math.min(edit.end.col, endLineObj.text.length)
+                : endLineObj.text.length;
+
+            const range = new vscode.Range(
+                new vscode.Position(actualStartLine, startCol),
+                new vscode.Position(actualEndLine, endCol)
+            );
+
+            // Normalize EOL sequences in the replacement text
+            const normalizedText = this.normalizeEOL(edit.newText, document);
+
+            const showRange = new vscode.Range(
+                0,
+                0,
+                document.lineCount - 1,
+                Number.MAX_SAFE_INTEGER
+            );
+
+            const item = new vscode.InlineCompletionItem(normalizedText, range);
+            item.isInlineEdit = true;
+            item.showRange = showRange;
+
+            suggestions.push(item);
+        }
+
+        return suggestions;
     }
 
     /**
