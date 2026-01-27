@@ -116,6 +116,7 @@ export class JsonSuggestionsProvider {
 
         for (const suggestion of suggestions) {
             const matchText = suggestion.match.text;
+            const normalizedMatchText = this.normalizeEOL(matchText, document);
             const expectedCursorLine = suggestion.match.cursorAtLine - 1; // Convert to 0-based
             const expectedFile = suggestion.match.file;
 
@@ -127,7 +128,7 @@ export class JsonSuggestionsProvider {
             // Find all occurrences of the match text in the document
             let searchIndex = 0;
             while (true) {
-                const matchIndex = documentText.indexOf(matchText, searchIndex);
+                const matchIndex = documentText.indexOf(normalizedMatchText, searchIndex);
                 if (matchIndex === -1) {
                     break;
                 }
@@ -173,6 +174,7 @@ export class JsonSuggestionsProvider {
     ): vscode.InlineCompletionItem[] {
         const documentText = document.getText();
         const matchText = suggestion.match.text;
+        const normalizedMatchText = this.normalizeEOL(matchText, document);
         const expectedCursorLine = suggestion.match.cursorAtLine - 1; // Convert to 0-based
 
         // Find the match that corresponds to the current cursor position
@@ -180,7 +182,7 @@ export class JsonSuggestionsProvider {
         let matchStartLine = -1;
 
         while (true) {
-            const matchIndex = documentText.indexOf(matchText, searchIndex);
+            const matchIndex = documentText.indexOf(normalizedMatchText, searchIndex);
             if (matchIndex === -1) {
                 break;
             }
